@@ -1,0 +1,149 @@
+["{ path: '/user', layout: false, routes: [ { name:…/user/login', component: './user/login', }, ], }", "{ path: '/dashboard', name: '首页', icon: 'HomeOutlined', component: './Welcome', }", "{ name: '系统总览', path: '/systemoverview', icon: 'd…ss: 'hasRoute', component: './SystemOverview', }", "{ name: '工作台', icon: 'orderedList', path: '/todo'…odo', access: 'hasRoute', component: './Todo', }", "{ name: '用户管理', icon: 'user', title: 'biz_userMng…component: './PersonalMng/detail', }, ], }, ], }", "{ name: '业务管理', icon: 'snippets', path: '/busines…ponent: './Product/product-cash-detail', }, ], }", "{ icon: 'userDelete', name: '运营管理', path: '/opera…ss: 'hasRoute', }, { component: './404', }, ], }", "{ name: '系统设置', icon: 'setting', path: '/sysMng',…置', component: './LicensedCities', }, ], }, ], }", "{ name: '开发配置', icon: 'ExperimentOutlined', path:…v/sso-config', component: './DevConfig', }, ], }", "{ path: '/', redirect: '/dashboard', }", "{ component: './404', }"]
+arg1: (11) ["{ path: '/user', layout: false, routes: [ { name:…/user/login', component: './user/login', }, ], }", "{ path: '/dashboard', name: '首页', icon: 'HomeOutlined', component: './Welcome', }", "{ name: '系统总览', path: '/systemoverview', icon: 'd…ss: 'hasRoute', component: './SystemOverview', }", "{ name: '工作台', icon: 'orderedList', path: '/todo'…odo', access: 'hasRoute', component: './Todo', }", "{ name: '用户管理', icon: 'user', title: 'biz_userMng…component: './PersonalMng/detail', }, ], }, ], }", "{ name: '业务管理', icon: 'snippets', path: '/busines…ponent: './Product/product-cash-detail', }, ], }", "{ icon: 'userDelete', name: '运营管理', path: '/opera…ss: 'hasRoute', }, { component: './404', }, ], }", "{ name: '系统设置', icon: 'setting', path: '/sysMng',…置', component: './LicensedCities', }, ], }, ], }", "{ name: '开发配置', icon: 'ExperimentOutlined', path:…v/sso-config', component: './DevConfig', }, ], }", "{ path: '/', redirect: '/dashboard', }", "{ component: './404', }"]
+0: "{ path: '/user', layout: false, routes: [ { name: 'login', path: '/user/login', component: './user/login', }, ], }"
+1: "{ path: '/dashboard', name: '首页', icon: 'HomeOutlined', component: './Welcome', }"
+2: "{ name: '系统总览', path: '/systemoverview', icon: 'dashboard', title: 'biz_systemOverview', access: 'hasRoute', component: './SystemOverview', }"
+3: "{ name: '工作台', icon: 'orderedList', path: '/todo', title: 'biz_todo', access: 'hasRoute', component: './Todo', }"
+4: "{ name: '用户管理', icon: 'user', title: 'biz_userMng', access: 'hasRoute', path: '/userMng', routes: [ { name: '企业用户', path: '/userMng/enterpriseMng', title: 'biz_userMng_enterpriseMng', access: 'hasRoute', routes: [ { path: '/userMng/enterpriseMng/list', name: '进件管理', component: './EnterpriseIncoming', }, { path: '/userMng/enterpriseMng/detail', name: '企业进件详情', hideInMenu: true, component: './EnterpriseIncoming/detail', }, { path: '/userMng/enterpriseMng/heavy-promote-detail', name: '提额进件详情', hid…g/personalMng', title: 'biz_userMng_personalMng', access: 'hasRoute', routes: [ { path: '/userMng/personalMng/list', name: '个人进件管理', component: './PersonalIncoming', }, { path: '/userMng/personalMng/detail', name: '个人进件详情', hideInMenu: true, component: './PersonalIncoming/detail', }, { path: '/userMng/personalMng/com-list', name: '个人用户管理', component: './PersonalMng', }, { path: '/userMng/personalMng/com-detail', name: '个人用户详情', hideInMenu: true, component: './PersonalMng/detail', }, ], }, ], }"
+5: "{ name: '业务管理', icon: 'snippets', path: '/businessMng', title: 'biz_businessMng', access: 'hasRoute', routes: [ { path: '/businessMng/car-insurance/list', name: '订单管理(车险分期)', title: 'car_insurance_list', access: 'hasRoute', component: './CarInsurance/list', }, { path: '/businessMng/car-insurance/detail', name: '订单详情(车险分期)', hideInMenu: true, title: '', component: './CarInsurance/detail', }, { path: '/businessMng/list', name: '订单管理(账期)', component: './BusinessMng', title: 'biz_businessMng_list',… }, { path: '/businessMng/add-product', name: '创建产品', hideInMenu: true, component: './Product/add-product', }, { path: '/businessMng/product-bill-detail', name: '产品详情(账期)', hideInMenu: true, component: './Product/product-bill-detail', }, { path: '/businessMng/product-lease-detail', name: '产品详情(融租)', hideInMenu: true, component: './Product/product-lease-detail', }, { path: '/businessMng/product-cash-detail', name: '产品详情(小贷)', hideInMenu: true, component: './Product/product-cash-detail', }, ], }"
+6: "{ icon: 'userDelete', name: '运营管理', path: '/operation-manager', title: 'operate_manage', access: 'hasRoute', routes: [ { path: '/operation-manager/business-report', name: '小额贷款业务报表', title: 'gdjr_data_report', component: './BusinessExcel', access: 'hasRoute', }, { path: '/operation-manager/first-audit', name: '应收账款风控预跑', title: 'debt_risk_pre', access: 'hasRoute', component: './FirstAudit', }, { path: '/operation-manager/first-audit/detail', name: '应收账款风控预跑详情', hideInMenu: true, component: './F… '/operation-manager/activity/canvas-activity', name: '画布活动', component: './CanvasActivity', title: 'biz_businessMng_cashList', access: 'hasRoute', }, ], }, { path: '/operation-manager/award-manager', name: '奖品管理', title: 'award_manager_operate_manage', component: './AwardManager', access: 'hasRoute', }, { path: '/operation-manager/premiumCompany', name: '保费收款公司', title: 'insurance_company_list_operate_manage', component: './PremiumCompany', access: 'hasRoute', }, { component: './404', }, ], }"
+7: "{ name: '系统设置', icon: 'setting', path: '/sysMng', title: 'biz_sysMng', access: 'hasRoute', routes: [ { name: '数据字典', icon: 'user', title: 'biz_sysMng_dataDiction', access: 'hasRoute', path: '/sysMng/dataDiction', routes: [ { path: '/sysMng/dataDiction/carModelLibrary', name: '车型库', component: './CarModelLibrary', }, { path: '/sysMng/dataDiction/promotion', name: '车型库促销方案', component: './Promotion', }, { path: '/sysMng/dataDiction/storeConfig', name: '门店配置', component: './StoreConfig', }, { path: '/sysMng/dataDiction/licensedCities', name: '上牌城市配置', component: './LicensedCities', }, ], }, ], }"
+8: "{ name: '开发配置', icon: 'ExperimentOutlined', path: '/dev', title: 'dev', access: 'hasDevAccess', routes: [ { name: 'SSO灰度配置', icon: 'user', path: '/dev/sso-config', component: './DevConfig', }, ], }"
+9: "{ path: '/', redirect: '/dashboard', }"
+10: "{ component: './404', }"
+
+
+
+" { name: '企业用户', path: '/userMng/enterpriseMng', title: 'biz_userMng_enterpriseMng', access: 'hasRoute', routes: [ { path: '/userMng/enterpriseMng/list', name: '进件管理', component: './EnterpriseIncoming', }, { path: '/userMng/enterpriseMng/detail', name: '企业进件详情', hideInMenu: true, component: './EnterpriseIncoming/detail', }, { path: '/userMng/enterpriseMng/heavy-promote-detail', name: '提额进件详情', hideInMenu: true, component: './EnterpriseIncoming/components/HeavyQuotaPromoteDetail', }, { path: '/u…deInMenu: true, component: './EnterpriseMng/product-detail', }, { path: '/userMng/enterpriseMng/authentication/list', name: '认证管理', title: 'car_insurance_certification_management', access: 'hasRoute', component: './Authentication/list', }, { path: '/userMng/enterpriseMng/authentication/detail', name: '认证管理-详情', hideInMenu: true, component: './Authentication/detail', }, { path: '/userMng/enterpriseMng/authentication/add', name: '认证管理-新增', hideInMenu: true, component: './Authentication/add', }, "
+
+
+{
+  name: '企业用户',
+  path: '/userMng/enterpriseMng',
+  title: 'biz_userMng_enterpriseMng',
+  access: 'hasRoute',
+  routes: [
+    {
+      path: '/userMng/enterpriseMng/list',
+      name: '进件管理',
+      component: './EnterpriseIncoming',
+    },
+    {
+      path: '/userMng/enterpriseMng/detail',
+      name: '企业进件详情',
+      hideInMenu: true,
+      component: './EnterpriseIncoming/detail',
+    },
+    {
+      path: '/userMng/enterpriseMng/heavy-promote-detail',
+      name: '提额进件详情',
+      hideInMenu: true,
+      component: './EnterpriseIncoming/components/HeavyQuotaPromoteDetail',
+    },
+    {
+      path: '/userMng/enterpriseMng/com-list',
+      name: '额度管理',
+      component: './EnterpriseMng',
+    },
+    {
+      path: '/userMng/enterpriseMng/com-detail',
+      name: '企业用户详情',
+      hideInMenu: true,
+      component: './EnterpriseMng/com-detail',
+    },
+    {
+      path: '/userMng/enterpriseMng/product-detail',
+      name: '企业用户详情',
+      hideInMenu: true,
+      component: './EnterpriseMng/product-detail',
+    },
+    {
+      path: '/userMng/enterpriseMng/authentication/list',
+      name: '认证管理',
+      title: 'car_insurance_certification_management',
+      access: 'hasRoute',
+      component: './Authentication/list',
+    },
+    {
+      path: '/userMng/enterpriseMng/authentication/detail',
+      name: '认证管理-详情',
+      hideInMenu: true,
+      component: './Authentication/detail',
+    },
+    {
+      path: '/userMng/enterpriseMng/authentication/add',
+      name: '认证管理-新增',
+      hideInMenu: true,
+      component: './Authentication/add',
+    },
+  ],
+}
+
+
+
+
+" { 
+  name: '企业用户', 
+  path: '/userMng/enterpriseMng', 
+  title: 'biz_userMng_enterpriseMng', 
+  access: 'hasRoute', 
+  routes: [ 
+    { path: '/userMng/enterpriseMng/list', name: '进件管理', component: './EnterpriseIncoming' }, 
+    { path: '/userMng/enterpriseMng/detail', name: '企业进件详情', hideInMenu: true, component: './EnterpriseIncoming/detail' }, 
+    { path: '/userMng/enterpriseMng/heavy-promote-detail', name: '提额进件详情', hideInMenu: true, component: './EnterpriseIncoming/components/HeavyQuotaPromoteDetail' }, 
+    { path: '/user…', hideInMenu: true, component: './EnterpriseMng/product-detail' }, 
+    { path: '/userMng/enterpriseMng/authentication/list', name: '认证管理', title: 'car_insurance_certification_management', access: 'hasRoute', component: './Authentication/list' }, 
+    { path: '/userMng/enterpriseMng/authentication/detail', name: '认证管理-详情', hideInMenu: true, component: './Authentication/detail' }, 
+    { path: '/userMng/enterpriseMng/authentication/add', name: '认证管理-新增', hideInMenu: true, component: './Authentication/add' } 
+  ] 
+}"
+" { 
+  name: '企业用户', 
+  path: '/userMng/enterpriseMng', 
+  title: 'biz_userMng_enterpriseMng', 
+  access: 'hasRoute', 
+  routes: [ 
+    { 
+      path: '/userMng/enterpriseMng/list', 
+      name: '进件管理', 
+      component: './EnterpriseIncoming' 
+    }, 
+    { 
+      path: '/userMng/enterpriseMng/detail', 
+      name: '企业进件详情', 
+      hideInMenu: true, 
+      component: './EnterpriseIncoming/detail' 
+    }, 
+    { 
+      path: '/userMng/enterpriseMng/heavy-promote-detail', 
+      name: '提额进件详情', 
+      hideInMenu: true, 
+      component: './EnterpriseIncoming/components/HeavyQuotaPromoteDetail' 
+    }, 
+    { 
+      path: '/user…', 
+      hideInMenu: true, 
+      component: './EnterpriseMng/product-detail' 
+    }, 
+    { 
+      path: '/userMng/enterpriseMng/authentication/list', 
+      name: '认证管理', 
+      title: 'car_insurance_certification_management', 
+      access: 'hasRoute', 
+      component: './Authentication/list' 
+    }, 
+    { 
+      path: '/userMng/enterpriseMng/authentication/detail', 
+      name: '认证管理-详情', 
+      hideInMenu: true, 
+      component: './Authentication/detail' 
+    }, 
+    { 
+      path: '/userMng/enterpriseMng/authentication/add', 
+      name: '认证管理-新增', 
+      hideInMenu: true, 
+      component: './Authentication/add' 
+    } 
+  ]
+}"
+
