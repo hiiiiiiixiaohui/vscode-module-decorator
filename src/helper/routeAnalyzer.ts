@@ -255,7 +255,7 @@ export class RouteAnalyzer {
                 const componentPath = this.resolveComponentPath(route.component);
 
                 // 获取模块目录下的所有相关文件
-                const componentDir = path.dirname(`${componentPath}/index.*`);
+                const componentDir = path.dirname(`${componentPath}/*`);
                 // 映射模块文件
                 await this.mapModuleFiles(componentDir, route.name!, route.path!);
             }
@@ -334,9 +334,6 @@ export class RouteAnalyzer {
      * 获取文件对应的模块信息
      */
     public getModuleForFile(filePath: string): ModuleMapping | undefined {
-
-        console.log('getModuleForFile 330', this.moduleMappings.entries());
-        console.log('===============================================');
         return this.moduleMappings.get(filePath);
     }
 
