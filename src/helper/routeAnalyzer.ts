@@ -67,6 +67,7 @@ export class RouteAnalyzer {
                 vscode.window.showWarningMessage('可通过配置修改extensionmodulemap.moduleSourceMapPath和extensionmodulemap.routeConfigPath设置路径!');
                 return;
             }
+            this.moduleMappings.clear();
             // 分析路由文件
             await this.analyzeRoutes();
             this.initStatus = true;
@@ -269,16 +270,19 @@ export class RouteAnalyzer {
      * 建立模块映射关系
      */
     private async buildModuleMappings(routes: RouteConfig[]) {
+
+        console.log('272 routes', routes);
         for await (const route of routes) {
             if (route.component) {
                 const moduleDirName = this.extractModuleName(route.component);
 
+                // const componentPath = this.resolveComponentPath(route.component);
                 const componentPath = this.resolveComponentPath(moduleDirName);
 
                 // 获取模块目录下的所有相关文件
                 const componentDir = path.dirname(`${componentPath}/*`);
                 // 映射模块文件
-                await this.mapModuleFiles(componentDir, route.name!, route.path!);
+                await this.mapModuleFiles(componentDir, route.name!, route.path!, route.component);
             }
         }
     }
@@ -286,37 +290,50 @@ export class RouteAnalyzer {
     /**
      * 映射模块下的所有相关文件
      */
-    private async mapModuleFiles(dir: string, moduleName: string, routePath: string) {
+    private async mapModuleFiles(dir: string, moduleName: string, routePath: string, componentPath: string) {
         try {
-
             // 首先检查目录是否存在
             const dirExists = await fs.access(dir).then(() => true).catch(() => false);
             if (!dirExists) {
-                console.log('===============================================');
-                console.log(`目录不存在: ${dir}`);
-                console.log(`目录不存在: ${dirExists}`);
                 return;
             }
 
-
-            // 读取目录下的所有文件
+            // if (!dirExists) {
+            //     // 如果目录不存在，则检查父目录,如果父目录存在，则映射父目录下的所有缺失文件
+            //     const tansformDir = this.getParantDir(dir);
+            //     const files = await fs.readdir(tansformDir, { withFileTypes: true });
+            //     for (const file of files) {
+            //         const filePath = path.join(tansformDir, file.name);
+            //         if (this.isRelevantFile(file.name) && !this.moduleMappings.has(filePath)) {
+            //             const mapping: ModuleMapping = {
+            //                 moduleName,
+            //                 routePath,
+            //                 filePath
+            //             };
+            //             this.moduleMappings.set(filePath, mapping);
+            //         }
+            //     }
+            //     return;
+            // }
+            // 首次读取目录下的所有文件
             const files = await fs.readdir(dir, { withFileTypes: true });
 
             // 检查目录名是否与模块名匹配
             for (const file of files) {
+                // 完整文件路径xxx/xxx/xxx/xxx(.ts|.tsx|.js|.jsx|.vue|.json|.d.ts|.less|.scss|.css)或者目录名称
                 const filePath = path.join(dir, file.name);
-                console.log('filePath', filePath);
 
                 if (file.isDirectory()) {
                     // 递归处理子目录,但保持原始moduleName不变
-                    await this.mapModuleFiles(filePath, moduleName, routePath);
+                    await this.mapModuleFiles(filePath, moduleName, routePath, componentPath);
                 } else if (this.isRelevantFile(file.name)) {
                     // 添加到映射,使用原始moduleName
-                    const mapping: ModuleMapping = {
+                    let mapping: ModuleMapping = {
                         moduleName,
                         routePath,
                         filePath
                     };
+
                     if (!this.moduleMappings.has(filePath)) {
                         this.moduleMappings.set(filePath, mapping);
                     }
@@ -369,7 +386,6 @@ export class RouteAnalyzer {
      * 获取文件对应的模块信息
      */
     public getModuleForFile(filePath: string): ModuleMapping | undefined {
-
         console.log('this.moduleMappings', this.moduleMappings);
         return this.moduleMappings.get(filePath);
     }

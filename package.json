@@ -1,6 +1,6 @@
 {
   "name": "extensionmodulemap",
-  "displayName": "extensionModuleMap",
+  "displayName": "Umi路由模块映射",
   "description": "方便查看模块路由映射名称",
   "version": "0.0.1",
   "publisher": "hiiiiiiixiaohui",
@@ -23,6 +23,22 @@
       {
         "command": "extensionmodulemap.restartModuleMap",
         "title": "开启模块映射分析"
+      },
+      {
+        "command": "extensionmodulemap.copyAllInfo",
+        "title": "复制全部信息"
+      },
+      {
+        "command": "extensionmodulemap.copyModuleName",
+        "title": "复制模块名称"
+      },
+      {
+        "command": "extensionmodulemap.copyRoutePath",
+        "title": "复制路由"
+      },
+      {
+        "command": "extensionmodulemap.copyFilePath",
+        "title": "复制路径"
       }
     ],
     "keybinding": {
@@ -51,17 +67,21 @@
     "ts": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.93.0",
     "@types/mocha": "^10.0.9",
     "@types/node": "20.x",
+    "@types/vscode": "^1.93.0",
     "@typescript-eslint/eslint-plugin": "^8.10.0",
     "@typescript-eslint/parser": "^8.7.0",
-    "eslint": "^9.13.0",
-    "typescript": "^5.6.3",
-    "ts-loader": "^9.5.1",
-    "webpack": "^5.95.0",
-    "webpack-cli": "^5.1.4",
     "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.13.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.6.3",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.26.2",
+    "@babel/traverse": "^7.25.9"
   }
 }
