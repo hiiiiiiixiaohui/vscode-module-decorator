@@ -25,6 +25,7 @@ export class RouteAnalyzer {
     private workspaceRoot: string;
     private targetModulePath: string;
     private routeFilePath: string;
+    private initStatus: boolean = false;
     private moduleMappings: Map<string, ModuleMapping>;
     private beenMappedFiles: Map<string, boolean>;
 
@@ -43,12 +44,32 @@ export class RouteAnalyzer {
         this.routeFilePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.routeConfigPath') || './config/routes.ts'); // 默认路由文件路径
     }
 
+    private async checkRouteFileExists(): Promise<boolean> {
+        const routeExists = await fs.access(this.routeFilePath).then(() => true).catch(() => false);
+        const targetModuleExists = await fs.access(this.targetModulePath).then(() => true).catch(() => false);
+        return routeExists && targetModuleExists;
+    }
     /**
      * 初始化路由分析器
      */
+
+    public getInitStatus(): boolean {
+        return this.initStatus;
+    }
+
     public async initialize(): Promise<void> {
         try {
+            // 检查路由文件是否存在
+            if (!await this.checkRouteFileExists()) {
+                this.initStatus = false;
+                vscode.window.showWarningMessage('src/pages目录下不存在!');
+                vscode.window.showWarningMessage('工作目录必须包含config/routes.ts文件!');
+                vscode.window.showWarningMessage('可通过配置修改extensionmodulemap.moduleSourceMapPath和extensionmodulemap.routeConfigPath设置路径!');
+                return;
+            }
+            // 分析路由文件
             await this.analyzeRoutes();
+            this.initStatus = true;
             // 注册文件监听
             this.watchRouteChanges();
         } catch (error) {
@@ -250,9 +271,9 @@ export class RouteAnalyzer {
     private async buildModuleMappings(routes: RouteConfig[]) {
         for await (const route of routes) {
             if (route.component) {
-                // const moduleDirName = this.extractModuleName(route.component);
+                const moduleDirName = this.extractModuleName(route.component);
 
-                const componentPath = this.resolveComponentPath(route.component);
+                const componentPath = this.resolveComponentPath(moduleDirName);
 
                 // 获取模块目录下的所有相关文件
                 const componentDir = path.dirname(`${componentPath}/*`);
@@ -267,11 +288,25 @@ export class RouteAnalyzer {
      */
     private async mapModuleFiles(dir: string, moduleName: string, routePath: string) {
         try {
+
+            // 首先检查目录是否存在
+            const dirExists = await fs.access(dir).then(() => true).catch(() => false);
+            if (!dirExists) {
+                console.log('===============================================');
+                console.log(`目录不存在: ${dir}`);
+                console.log(`目录不存在: ${dirExists}`);
+                return;
+            }
+
+
+            // 读取目录下的所有文件
             const files = await fs.readdir(dir, { withFileTypes: true });
 
             // 检查目录名是否与模块名匹配
             for (const file of files) {
                 const filePath = path.join(dir, file.name);
+                console.log('filePath', filePath);
+
                 if (file.isDirectory()) {
                     // 递归处理子目录,但保持原始moduleName不变
                     await this.mapModuleFiles(filePath, moduleName, routePath);
@@ -306,7 +341,7 @@ export class RouteAnalyzer {
      * 判断是否为相关文件
      */
     private isRelevantFile(fileName: string): boolean {
-        const relevantExtensions = ['.ts', '.tsx', '.js', '.jsx', '.vue'];
+        const relevantExtensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.json', '.d.ts', '.less', '.scss', '.css'];
         return relevantExtensions.some(ext => fileName.endsWith(ext));
     }
 
@@ -334,6 +369,8 @@ export class RouteAnalyzer {
      * 获取文件对应的模块信息
      */
     public getModuleForFile(filePath: string): ModuleMapping | undefined {
+
+        console.log('this.moduleMappings', this.moduleMappings);
         return this.moduleMappings.get(filePath);
     }
 

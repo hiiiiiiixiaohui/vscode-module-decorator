@@ -6,9 +6,8 @@ export function showModuleTag(editor: vscode.TextEditor, moduleInfo: Record<stri
     // 创建装饰器
     const decorationType = vscode.window.createTextEditorDecorationType({
         before: {
-            contentText: `[${moduleInfo.moduleName}]`,
+            contentText: '',
             color: '#888888',
-            margin: '0 8px 0 0'
         }
     });
 

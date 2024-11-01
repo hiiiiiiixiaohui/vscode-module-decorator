@@ -3,7 +3,11 @@
   "displayName": "extensionModuleMap",
   "description": "方便查看模块路由映射名称",
   "version": "0.0.1",
-  "publisher": "xiaohui",
+  "publisher": "hiiiiiiixiaohui",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hiiiiiiixiaohui/vscode-module-decorator.git"
+  },
   "engines": {
     "vscode": "^1.93.0"
   },
@@ -17,19 +21,19 @@
   "contributes": {
     "commands": [
       {
-        "command": "extensionmodulemap.seeModuleMapName",
-        "title": "查看模块映射名称"
+        "command": "extensionmodulemap.restartModuleMap",
+        "title": "开启模块映射分析"
       }
     ],
     "keybinding": {
-      "command": "extensionmodulemap.seeModuleMapName",
+      "command": "extensionmodulemap.restartModuleMap",
       "key": "ctrl+shift+d",
       "mac": "cmd+shift+d"
     },
     "menus": {
       "editor/context": [
         {
-          "command": "extensionmodulemap.seeModuleMapName",
+          "command": "extensionmodulemap.restartModuleMap",
           "group": "navigation"
         }
       ]
@@ -47,7 +51,7 @@
     "ts": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.95.0",
+    "@types/vscode": "^1.93.0",
     "@types/mocha": "^10.0.9",
     "@types/node": "20.x",
     "@typescript-eslint/eslint-plugin": "^8.10.0",
