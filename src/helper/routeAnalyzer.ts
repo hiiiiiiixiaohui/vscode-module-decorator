@@ -273,35 +273,20 @@ export class RouteAnalyzer {
      * 建立模块映射关系
      */
     private async buildModuleMappings() {
-
-        const moduleComputedList: string[] = [];
         for await (const route of this.routes) {
             if (route.component) {
                 const moduleDirName = this.extractModuleName(route.component);
-
-                // const componentPath = this.resolveComponentPath(route.component);
                 const componentPath = this.resolveComponentPath(moduleDirName);
-                // const componentDir = path.dirname(componentPath);
-
-                moduleComputedList.push(componentPath);
-
-                // 获取模块目录下的所有相关文件
-                // const componentDir = path.dirname(`${componentPath}`);
                 // 映射模块文件
-                await this.mapModuleFiles(componentPath, route.path!, route.component, true);
+                await this.mapModuleFiles(componentPath, route.name!, route.path!, route.component, true);
             }
         }
-        // /Users/alantu/Desktop/projects/lala-finance-biz-web/src/pages/AfterLoanCarInsurance
-        // await this.mapModuleFiles('/Users/alantu/Desktop/projects/lala-finance-biz-web/src/pages/AfterLoanCarInsurance', '还款管理-车险', '/businessMng/postLoanMng/car-insurance/list', '/AfterLoanCarInsurance/list', true);
-        // await this.mapModuleFiles('/Users/alantu/Desktop/projects/lala-finance-biz-web/src/pages/AfterLoan', '还款管理', '/businessMng/postLoanMng/after-loan-list', '/AfterLoan', true);
-
-        // console.log('this.moduleComputedList', [...new Set(moduleComputedList)]);
     }
 
     /**
      * 映射模块下的所有相关文件
      */
-    private async mapModuleFiles(dir: string, routePath: string, componentPath: string, isRoot: boolean) {
+    private async mapModuleFiles(dir: string, moduleName: string, routePath: string, componentPath: string, isRoot: boolean) {
         try {
             // 首先检查目录是否存在
             const dirExists = await fs.access(dir).then(() => true).catch(() => false);
@@ -320,9 +305,9 @@ export class RouteAnalyzer {
                 if (file.isDirectory() && !this.iteratorArray.get(this)?.includes(filePath)) {
                     this.iteratorArray.set(this, [...this.iteratorArray.get(this) || [], filePath]);
                     // moduleName 会受routes的遍历初始值影响，
-                    //因此如果首个同名文件夹下的其余其他文件夹内的文件，都会受该值moduleName影响
+                    // 因此如果首个同名文件夹下的其余其他文件夹内的文件，都会受该值moduleName影响
                     // 后生代目录递归查找文件
-                    await this.mapModuleFiles(filePath, routePath, componentPath, false);
+                    await this.mapModuleFiles(filePath, moduleName, routePath, componentPath, false);
                 } else if (isInTurelyStuck && isRoot) {
                     // 查找文件根目录index及相关文件，对比路由配置信息
                     const projectComponentMapPath = filePath.split('.tsx')[0];
@@ -337,7 +322,7 @@ export class RouteAnalyzer {
                     });
 
 
-                    const moduleNames = [...new Set([...(this.rootModuleFileTags.get(dir) || []), moduleInfo?.name || ''])];
+                    const moduleNames = [...new Set([...(this.rootModuleFileTags.get(dir) || []), moduleInfo?.name || moduleName || ''])].filter(Boolean) as string[];
                     this.rootModuleFileTags.set(dir, moduleNames);
 
                     mapping = {
@@ -351,7 +336,11 @@ export class RouteAnalyzer {
                 } else if (isInTurelyStuck && !isRoot) {
                     const parentDir = path.dirname(dir);
                     // 获取父级目录的模块名
-                    const moduleNames = this.rootModuleFileTags.get(parentDir) || [];
+                    let moduleNames = this.rootModuleFileTags.get(parentDir) || [];
+                    // 特殊目录路由
+                    if (filePath.includes('/user/login')) {
+                        moduleNames = ['login'];
+                    }
                     // 非根目录下的文件
                     mapping = {
                         moduleNames: moduleNames ?? [],

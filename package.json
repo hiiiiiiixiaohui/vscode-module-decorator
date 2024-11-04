@@ -2,7 +2,7 @@
   "name": "extensionmodulemap",
   "displayName": "Umi路由模块映射",
   "description": "方便查看模块路由映射名称",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "hiiiiiiixiaohui",
   "repository": {
     "type": "git",
