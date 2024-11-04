@@ -16,8 +16,9 @@ interface RouteConfig {
 
 // 模块映射接口
 interface ModuleMapping {
-    moduleName: string;
+    moduleNames: string | string[];
     routePath: string;
+    hideInMenu?: boolean;
     filePath: string;
 }
 
@@ -27,11 +28,14 @@ export class RouteAnalyzer {
     private routeFilePath: string;
     private initStatus: boolean = false;
     private moduleMappings: Map<string, ModuleMapping>;
-    private beenMappedFiles: Map<string, boolean>;
-
+    private iteratorArray: WeakMap<any, string[]>;
+    private routes: RouteConfig[];
+    private rootModuleFileTags: Map<string, string[]>;
     constructor(context: vscode.ExtensionContext) {
         this.moduleMappings = new Map();
-        this.beenMappedFiles = new Map();
+        this.rootModuleFileTags = new Map();
+        this.iteratorArray = new WeakMap();
+        this.routes = [];
 
         // 获取工作区根目录
         const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -88,9 +92,8 @@ export class RouteAnalyzer {
             const content = await fs.readFile(this.routeFilePath, 'utf-8');
             // 解析路由配置，扁平化处理
             const routes = await this.deepParseRouteConfig(content);
-
             // 建立模块映射
-            await this.buildModuleMappings(routes);
+            await this.buildModuleMappings();
         } catch (error) {
             console.error('Failed to analyze routes:', error);
             throw error;
@@ -236,15 +239,15 @@ export class RouteAnalyzer {
     }
 
 
-    private async deepParseRouteConfig(content: string): Promise<RouteConfig[]> {
+    private async deepParseRouteConfig(content: string) {
         try {
             const cleanContent = this.removeComments(content);
 
             // Find and parse the main export array
             const exportMatch = cleanContent.match(/export\s+default\s*\[([\s\S]*)\]/);
             if (!exportMatch) { return []; }
-            return await this.parseAndFlattenRoutes(exportMatch[1]);
-
+            // 存储解析后的路由
+            this.routes = await this.parseAndFlattenRoutes(exportMatch[1]);
         } catch (error) {
             console.error('Failed to parse route config:', error);
             return [];
@@ -269,74 +272,94 @@ export class RouteAnalyzer {
     /**
      * 建立模块映射关系
      */
-    private async buildModuleMappings(routes: RouteConfig[]) {
+    private async buildModuleMappings() {
 
-        console.log('272 routes', routes);
-        for await (const route of routes) {
+        const moduleComputedList: string[] = [];
+        for await (const route of this.routes) {
             if (route.component) {
                 const moduleDirName = this.extractModuleName(route.component);
 
                 // const componentPath = this.resolveComponentPath(route.component);
                 const componentPath = this.resolveComponentPath(moduleDirName);
+                // const componentDir = path.dirname(componentPath);
+
+                moduleComputedList.push(componentPath);
 
                 // 获取模块目录下的所有相关文件
-                const componentDir = path.dirname(`${componentPath}/*`);
+                // const componentDir = path.dirname(`${componentPath}`);
                 // 映射模块文件
-                await this.mapModuleFiles(componentDir, route.name!, route.path!, route.component);
+                await this.mapModuleFiles(componentPath, route.path!, route.component, true);
             }
         }
+        // /Users/alantu/Desktop/projects/lala-finance-biz-web/src/pages/AfterLoanCarInsurance
+        // await this.mapModuleFiles('/Users/alantu/Desktop/projects/lala-finance-biz-web/src/pages/AfterLoanCarInsurance', '还款管理-车险', '/businessMng/postLoanMng/car-insurance/list', '/AfterLoanCarInsurance/list', true);
+        // await this.mapModuleFiles('/Users/alantu/Desktop/projects/lala-finance-biz-web/src/pages/AfterLoan', '还款管理', '/businessMng/postLoanMng/after-loan-list', '/AfterLoan', true);
+
+        // console.log('this.moduleComputedList', [...new Set(moduleComputedList)]);
     }
 
     /**
      * 映射模块下的所有相关文件
      */
-    private async mapModuleFiles(dir: string, moduleName: string, routePath: string, componentPath: string) {
+    private async mapModuleFiles(dir: string, routePath: string, componentPath: string, isRoot: boolean) {
         try {
             // 首先检查目录是否存在
             const dirExists = await fs.access(dir).then(() => true).catch(() => false);
             if (!dirExists) {
                 return;
             }
-
-            // if (!dirExists) {
-            //     // 如果目录不存在，则检查父目录,如果父目录存在，则映射父目录下的所有缺失文件
-            //     const tansformDir = this.getParantDir(dir);
-            //     const files = await fs.readdir(tansformDir, { withFileTypes: true });
-            //     for (const file of files) {
-            //         const filePath = path.join(tansformDir, file.name);
-            //         if (this.isRelevantFile(file.name) && !this.moduleMappings.has(filePath)) {
-            //             const mapping: ModuleMapping = {
-            //                 moduleName,
-            //                 routePath,
-            //                 filePath
-            //             };
-            //             this.moduleMappings.set(filePath, mapping);
-            //         }
-            //     }
-            //     return;
-            // }
             // 首次读取目录下的所有文件
             const files = await fs.readdir(dir, { withFileTypes: true });
-
             // 检查目录名是否与模块名匹配
             for (const file of files) {
                 // 完整文件路径xxx/xxx/xxx/xxx(.ts|.tsx|.js|.jsx|.vue|.json|.d.ts|.less|.scss|.css)或者目录名称
                 const filePath = path.join(dir, file.name);
+                let mapping: ModuleMapping;
+                const isInTurelyStuck = this.isRelevantFile(file.name) && !this.moduleMappings.has(filePath);
 
-                if (file.isDirectory()) {
-                    // 递归处理子目录,但保持原始moduleName不变
-                    await this.mapModuleFiles(filePath, moduleName, routePath, componentPath);
-                } else if (this.isRelevantFile(file.name)) {
-                    // 添加到映射,使用原始moduleName
-                    let mapping: ModuleMapping = {
-                        moduleName,
+                if (file.isDirectory() && !this.iteratorArray.get(this)?.includes(filePath)) {
+                    this.iteratorArray.set(this, [...this.iteratorArray.get(this) || [], filePath]);
+                    // moduleName 会受routes的遍历初始值影响，
+                    //因此如果首个同名文件夹下的其余其他文件夹内的文件，都会受该值moduleName影响
+                    // 后生代目录递归查找文件
+                    await this.mapModuleFiles(filePath, routePath, componentPath, false);
+                } else if (isInTurelyStuck && isRoot) {
+                    // 查找文件根目录index及相关文件，对比路由配置信息
+                    const projectComponentMapPath = filePath.split('.tsx')[0];
+                    const moduleInfo = this.routes.find((route) => {
+                        let r_component = route.component;
+                        if (r_component && r_component.split('/').length <= 2) {
+                            r_component = path.resolve(this.targetModulePath, r_component!);
+                            return `${r_component}/index` === projectComponentMapPath;
+                        }
+                        r_component = path.resolve(this.targetModulePath, r_component!);
+                        return r_component === projectComponentMapPath;
+                    });
+
+
+                    const moduleNames = [...new Set([...(this.rootModuleFileTags.get(dir) || []), moduleInfo?.name || ''])];
+                    this.rootModuleFileTags.set(dir, moduleNames);
+
+                    mapping = {
+                        moduleNames: moduleInfo?.name ? [moduleInfo.name!] : moduleNames,
+                        routePath: moduleInfo?.path || routePath,
+                        hideInMenu: moduleInfo?.hideInMenu || false,
+                        filePath
+                    };
+                    this.moduleMappings.set(filePath, mapping);
+
+                } else if (isInTurelyStuck && !isRoot) {
+                    const parentDir = path.dirname(dir);
+                    // 获取父级目录的模块名
+                    const moduleNames = this.rootModuleFileTags.get(parentDir) || [];
+                    // 非根目录下的文件
+                    mapping = {
+                        moduleNames: moduleNames ?? [],
                         routePath,
                         filePath
                     };
 
-                    if (!this.moduleMappings.has(filePath)) {
-                        this.moduleMappings.set(filePath, mapping);
-                    }
+                    this.moduleMappings.set(filePath, mapping);
                 }
             }
         } catch (error) {
@@ -386,7 +409,6 @@ export class RouteAnalyzer {
      * 获取文件对应的模块信息
      */
     public getModuleForFile(filePath: string): ModuleMapping | undefined {
-        console.log('this.moduleMappings', this.moduleMappings);
         return this.moduleMappings.get(filePath);
     }
 

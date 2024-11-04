@@ -39,6 +39,10 @@
       {
         "command": "extensionmodulemap.copyFilePath",
         "title": "复制路径"
+      },
+      {
+        "command": "extensionmodulemap.copyHideInMenu",
+        "title": "复制是否隐藏"
       }
     ],
     "keybinding": {
