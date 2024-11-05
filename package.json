@@ -2,7 +2,8 @@
   "name": "extensionmodulemap",
   "displayName": "UmiJS Router Module Analyzer",
   "description": "convenient to view the module router mapping name",
-  "version": "0.0.3",
+  "private": true,
+  "version": "0.1.0",
   "publisher": "hiiiiiiixiaohui",
   "icon": "images/icon.png",
   "repository": {

@@ -1,171 +1,128 @@
-// import * as vscode from 'vscode';
-// import * as fs from 'fs';
-// import * as path from 'path';
-// import * as parser from '@babel/parser';
-// import * as traverse from '@babel/traverse';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as parser from '@babel/parser';
+import traverse from "@babel/traverse";
+import * as vscode from 'vscode';
 
-// // 存储模块依赖关系的类
-// class DependencyGraph {
-//     private dependencies: Map<string, Set<string>>;
 
-//     constructor() {
-//         this.dependencies = new Map();
-//     }
+export class Parser {
+    private workspaceRoot: string;
+    private targetModulePath: string;
+    private routeFilePath: string;
+    private importMap: Map<string, string[]>;
+    private aliasConfigs: [string, string][];
+    private allowedExtensions: string[];
 
-//     addDependency(from: string, to: string) {
-//         if (!this.dependencies.has(from)) {
-//             this.dependencies.set(from, new Set());
-//         }
-//         this.dependencies.get(from)!.add(to);
-//     }
 
-//     getDependencies(): Map<string, Set<string>> {
-//         return this.dependencies;
-//     }
-// }
+    constructor(context: vscode.ExtensionContext) {
+        this.importMap = new Map();
+        this.aliasConfigs = [];
+        this.allowedExtensions = ['.ts', '.tsx', '.js', '.jsx', '.vue'];
 
-// // 分析文件依赖的主要类
-// export class DependencyAnalyzer {
-//     private graph: DependencyGraph;
-//     private readonly extensions = ['.js', '.jsx', '.ts', '.tsx'];
+        const workspaceFolders = vscode.workspace.workspaceFolders;
 
-//     constructor() {
-//         this.graph = new DependencyGraph();
-//     }
+        if (!workspaceFolders) {
+            throw new Error('No workspace folder found');
+        }
 
-//     // 分析指定目录
-//     async analyzeDependencies(dirPath: string) {
-//         try {
-//             await this.processDirectory(dirPath);
-//             return this.graph.getDependencies();
-//         } catch (error) {
-//             console.error('Error analyzing dependencies:', error);
-//             throw error;
-//         }
-//     }
+        this.workspaceRoot = workspaceFolders[0].uri.fsPath;
+        this.targetModulePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.moduleSourceMapPath') || `.${path.sep}src${path.sep}pages`);
+        this.routeFilePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.routeConfigPath') || `.${path.sep}config${path.sep}routes.ts`);
 
-//     // 处理目录
-//     private async processDirectory(dirPath: string) {
-//         const files = await fs.promises.readdir(dirPath);
+    }
 
-//         for (const file of files) {
-//             const filePath = path.join(dirPath, file);
-//             const stat = await fs.promises.stat(filePath);
+    /**
+     * 获取js|tsconfig.json文件内容
+     */
+    public async initBeforeParseConfig(): Promise<void> {
+        const jsConfigPath = path.join(this.workspaceRoot, 'jsconfig.json');
+        const tsConfigPath = path.join(this.workspaceRoot, 'tsconfig.json');
+        const configPath = await fs.access(tsConfigPath).then(() => tsConfigPath).catch(() => jsConfigPath).catch(() => '');
+        if (!configPath) {
+            vscode.window.showErrorMessage('No config(jsconfig.json|tsconfig.json) file found!');
+        }
+        const config = await fs.readFile(configPath, 'utf-8');
+        try {
+            const configObj = JSON.parse(config);
+            const paths = configObj?.compilerOptions?.paths;
+            if (!paths) {
+                vscode.window.showErrorMessage('No paths found in config file!');
+            } else {
+                // 将paths对象转换为二维数组
+                this.aliasConfigs = Object.entries(paths).map(([key, value]) => {
+                    if (!Array.isArray(value) || !value.length) {
+                        throw new Error(`Invalid path value for key: ${key}`);
+                    }
+                    return [key, value[0]];
+                }) as [string, string][];
+            }
+        } catch (e) {
+            vscode.window.showErrorMessage('Invalid config(jsconfig.json|tsconfig.json) file!');
+        }
+    }
 
-//             if (stat.isDirectory()) {
-//                 await this.processDirectory(filePath);
-//             } else if (this.isValidFile(filePath)) {
-//                 await this.analyzeFile(filePath);
-//             }
-//         }
-//     }
 
-//     // 检查文件是否为支持的类型
-//     private isValidFile(filePath: string): boolean {
-//         return this.extensions.includes(path.extname(filePath));
-//     }
+    // 执行该方法前必须先解析完模块存在的paths别名
+    private async parse(filePath: string) {
+        // const dirPath = path.resolve(this.targetModulePath, `${filePath}`);
+        try {
+            if (!this.allowedExtensions.includes(path.extname(filePath)) || filePath.includes('.d.ts')) {
+                return [];
+            }
 
-//     // 分析单个文件
-//     private async analyzeFile(filePath: string) {
-//         try {
-//             const content = await fs.promises.readFile(filePath, 'utf-8');
-//             const ast = parser.parse(content, {
-//                 sourceType: 'module',
-//                 plugins: ['jsx', 'typescript'],
-//             });
 
-//             traverse(ast, {
-//                 ImportDeclaration: (path: { node: { source: { value: any; }; }; }) => {
-//                     const importPath = path.node.source.value;
-//                     if (!importPath.startsWith('.')) { return; } // 只处理相对路径导入
+            console.log('filePath', filePath);
 
-//                     const resolvedPath = this.resolveImportPath(filePath, importPath);
-//                     if (resolvedPath) {
-//                         this.graph.addDependency(filePath, resolvedPath);
-//                     }
-//                 },
-//                 CallExpression: (path: { node: { callee: { type: string; name: string; }; arguments: any; }; }) => {
-//                     if (path.node.callee.type === 'Identifier' &&
-//                         path.node.callee.name === 'require') {
-//                         const args = path.node.arguments;
-//                         if (args.length && args[0].type === 'StringLiteral') {
-//                             const importPath = args[0].value;
-//                             if (!importPath.startsWith('.')) { return; }
+            const code = await fs.readFile(filePath, 'utf-8');
+            const ast = parser.parse(code, {
+                sourceType: 'module',
+                plugins: ['jsx', 'typescript'],
+            });
 
-//                             const resolvedPath = this.resolveImportPath(filePath, importPath);
-//                             if (resolvedPath) {
-//                                 this.graph.addDependency(filePath, resolvedPath);
-//                             }
-//                         }
-//                     }
-//                 }
-//             });
-//         } catch (error) {
-//             console.error(`Error analyzing file ${filePath}:`, error);
-//         }
-//     }
+            // 缓存this
+            const _this = this;
+            // @ts-ignore
+            traverse(ast, {
+                ImportDeclaration(importPath: { node: { source: { value: string; }; }; }) {
+                    console.log('importPath', importPath);
+                    const importValue = importPath.node.source.value;
 
-//     // 解析导入路径
-//     private resolveImportPath(currentFile: string, importPath: string): string | null {
-//         const directory = path.dirname(currentFile);
-//         let resolvedPath = path.resolve(directory, importPath);
 
-//         // 检查是否需要添加扩展名
-//         if (!path.extname(resolvedPath)) {
-//             for (const ext of this.extensions) {
-//                 const pathWithExt = resolvedPath + ext;
-//                 if (fs.existsSync(pathWithExt)) {
-//                     return pathWithExt;
-//                 }
-//             }
-//             // 检查 index 文件
-//             for (const ext of this.extensions) {
-//                 const indexPath = path.join(resolvedPath, `index${ext}`);
-//                 if (fs.existsSync(indexPath)) {
-//                     return indexPath;
-//                 }
-//             }
-//             return null;
-//         }
+                    if (importValue.startsWith('@/')) {
+                        // 替换别名
+                    }
 
-//         return fs.existsSync(resolvedPath) ? resolvedPath : null;
-//     }
-// }
+                    if (importValue.startsWith('@@/')) {
+                        // 替换别名
+                    }
 
-// // VSCode 命令注册
-// // export function activate(context: vscode.ExtensionContext) {
-// //     let disposable = vscode.commands.registerCommand('extension.analyzeDependencies', async () => {
-// //         const workspaceFolders = vscode.workspace.workspaceFolders;
-// //         if (!workspaceFolders) {
-// //             vscode.window.showErrorMessage('请打开一个工作区文件夹');
-// //             return;
-// //         }
+                    if (importValue.startsWith('.')) {
+                        // 替换相对路径
+                    }
 
-// //         const analyzer = new DependencyAnalyzer();
-// //         try {
-// //             const dependencies = await analyzer.analyzeDependencies(workspaceFolders[0].uri.fsPath);
+                    // if (
+                    //     importValue.startsWith('@/') ||
+                    //     importValue.startsWith('@@/') ||
+                    //     importValue.startsWith('.')
+                    // ) {
+                    //     _this.importMap.set(filePath, [
+                    //         ...(_this.importMap.get(filePath) || []),
+                    //         path.join(path.dirname(filePath), importPath.node.source.value),
+                    //     ]);
+                    // }
+                },
+            });
 
-// //             // 创建依赖关系的可视化输出
-// //             let output = '模块依赖关系分析结果：\n\n';
-// //             dependencies.forEach((deps, file) => {
-// //                 const relativePath = path.relative(workspaceFolders[0].uri.fsPath, file);
-// //                 output += `${relativePath}:\n`;
-// //                 deps.forEach(dep => {
-// //                     const relativeDepPath = path.relative(workspaceFolders[0].uri.fsPath, dep);
-// //                     output += `  - ${relativeDepPath}\n`;
-// //                 });
-// //                 output += '\n';
-// //             });
+            return [..._this.importMap.entries()];
+        } catch (e) {
+            console.log(e);
+            return [];
+        }
 
-// //             // 显示结果
-// //             const outputChannel = vscode.window.createOutputChannel('依赖分析');
-// //             outputChannel.clear();
-// //             outputChannel.append(output);
-// //             outputChannel.show();
-// //         } catch (error) {
-// //             vscode.window.showErrorMessage('分析依赖关系时出错');
-// //         }
-// //     });
+    }
 
-// //     context.subscriptions.push(disposable);
-// // }
+    public async analyze(filePath: string) {
+        return await this.parse(filePath);
+    }
+
+}

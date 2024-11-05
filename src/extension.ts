@@ -15,6 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
 		routeAnalyzer.initialize().then(() => {
 
 			console.log('routeAnalyzer 初始化完成');
+
 			// 注册文件打开事件监听
 			context.subscriptions.push(
 				vscode.window.onDidChangeActiveTextEditor(editor => {
@@ -27,7 +28,7 @@ export function activate(context: vscode.ExtensionContext) {
 						const moduleInfo = routeAnalyzer.getModuleForFile(filePath);
 						if (moduleInfo) {
 							// 显示模块标签-右下角
-							const result = showModuleTag(editor, moduleInfo);
+							const result = showModuleTag(moduleInfo);
 							statusBarItems = result.statusBarItem;
 							disposables.push(...result.disposables);
 						}
