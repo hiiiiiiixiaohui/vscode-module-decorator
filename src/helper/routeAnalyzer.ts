@@ -44,8 +44,8 @@ export class RouteAnalyzer {
             throw new Error('No workspace folder found');
         }
         this.workspaceRoot = workspaceFolders[0].uri.fsPath;
-        this.targetModulePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.moduleSourceMapPath') || './src/pages');
-        this.routeFilePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.routeConfigPath') || './config/routes.ts'); // 默认路由文件路径
+        this.targetModulePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.moduleSourceMapPath') || `.${path.sep}src${path.sep}pages`);
+        this.routeFilePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.routeConfigPath') || `.${path.sep}config${path.sep}routes.ts`); // 默认路由文件路径
     }
 
     private async checkRouteFileExists(): Promise<boolean> {
@@ -66,8 +66,8 @@ export class RouteAnalyzer {
             // 检查路由文件是否存在
             if (!await this.checkRouteFileExists()) {
                 this.initStatus = false;
-                vscode.window.showWarningMessage('src/pages目录下不存在!');
-                vscode.window.showWarningMessage('工作目录必须包含config/routes.ts文件!');
+                vscode.window.showWarningMessage(`src${path.sep}pages目录下不存在!`);
+                vscode.window.showWarningMessage(`工作目录必须包含config${path.sep}routes.ts文件!`);
                 vscode.window.showWarningMessage('可通过配置修改extensionmodulemap.moduleSourceMapPath和extensionmodulemap.routeConfigPath设置路径!');
                 return;
             }
@@ -264,9 +264,9 @@ export class RouteAnalyzer {
      */
     private extractModuleName(componentPath: string): string {
         // 按'/'分割路径
-        const pathParts = componentPath.split('/');
+        const pathParts = componentPath.split(path.sep);
         // 返回第一段作为模块名
-        return `${pathParts[0]}/${pathParts[1]}`;
+        return `${pathParts[0]}${path.sep}${pathParts[1]}`;
     }
 
     /**
@@ -310,12 +310,13 @@ export class RouteAnalyzer {
                     await this.mapModuleFiles(filePath, moduleName, routePath, componentPath, false);
                 } else if (isInTurelyStuck && isRoot) {
                     // 查找文件根目录index及相关文件，对比路由配置信息
-                    const projectComponentMapPath = filePath.split('.tsx')[0];
+                    const suffix = path.extname(filePath);
+                    const projectComponentMapPath = filePath.split(suffix)[0];
                     const moduleInfo = this.routes.find((route) => {
                         let r_component = route.component;
-                        if (r_component && r_component.split('/').length <= 2) {
+                        if (r_component && r_component.split(path.sep).length <= 2) {
                             r_component = path.resolve(this.targetModulePath, r_component!);
-                            return `${r_component}/index` === projectComponentMapPath;
+                            return `${r_component}${path.sep}index` === projectComponentMapPath;
                         }
                         r_component = path.resolve(this.targetModulePath, r_component!);
                         return r_component === projectComponentMapPath;
@@ -326,29 +327,39 @@ export class RouteAnalyzer {
                     this.rootModuleFileTags.set(dir, moduleNames);
 
                     mapping = {
-                        moduleNames: moduleInfo?.name ? [moduleInfo.name!] : moduleNames,
+                        moduleNames: moduleInfo?.name ? [moduleInfo.name!] : moduleNames, // 兼容一些乱序的路由文件信息
                         routePath: moduleInfo?.path || routePath,
                         hideInMenu: moduleInfo?.hideInMenu || false,
                         filePath
                     };
+
                     this.moduleMappings.set(filePath, mapping);
 
                 } else if (isInTurelyStuck && !isRoot) {
-                    const parentDir = path.dirname(dir);
-                    // 获取父级目录的模块名
-                    let moduleNames = this.rootModuleFileTags.get(parentDir) || [];
-                    // 特殊目录路由
-                    if (filePath.includes('/user/login')) {
-                        moduleNames = ['login'];
-                    }
-                    // 非根目录下的文件
-                    mapping = {
-                        moduleNames: moduleNames ?? [],
-                        routePath,
-                        filePath
-                    };
+                    setTimeout(() => {
+                        const parentDir = path.dirname(dir);
+                        // 获取父级目录的模块名
+                        let moduleNames = this.rootModuleFileTags.get(parentDir) || [];
+                        // 处理深层文件索引最外层目录菜单名称
+                        if (moduleNames.length === 0) {
+                            const moduleNameQuote = dir.split('pages')[1];
+                            const dirName = `${path.sep}${moduleNameQuote.split(path.sep)[1]}`;
+                            const parentDirPath = path.join(this.targetModulePath, dirName);
+                            moduleNames = this.rootModuleFileTags.get(parentDirPath) || [];
+                        }
+                        // 特殊目录路由
+                        if (filePath.includes(`${path.sep}user${path.sep}login`)) {
+                            moduleNames = ['login'];
+                        }
+                        // 非根目录下的文件
+                        mapping = {
+                            moduleNames: moduleNames ?? [],
+                            routePath,
+                            filePath
+                        };
 
-                    this.moduleMappings.set(filePath, mapping);
+                        this.moduleMappings.set(filePath, mapping);
+                    }, 0);
                 }
             }
         } catch (error) {
@@ -379,10 +390,10 @@ export class RouteAnalyzer {
      */
     private watchRouteChanges(): void {
         const watcher = vscode.workspace.createFileSystemWatcher(
-            new vscode.RelativePattern(this.workspaceRoot, '**/routes/**/*')
+            new vscode.RelativePattern(this.workspaceRoot, `**${path.sep}routes${path.sep}**${path.sep}*`)
         );
         const watcher2 = vscode.workspace.createFileSystemWatcher(
-            new vscode.RelativePattern(this.workspaceRoot, '**/src/pages/**/*')
+            new vscode.RelativePattern(this.workspaceRoot, `**${path.sep}src${path.sep}pages${path.sep}**${path.sep}*`)
         );
 
         watcher.onDidChange(() => this.analyzeRoutes());
@@ -399,13 +410,5 @@ export class RouteAnalyzer {
      */
     public getModuleForFile(filePath: string): ModuleMapping | undefined {
         return this.moduleMappings.get(filePath);
-    }
-
-    /**
-     * 更新路由文件路径
-     */
-    public async updateRoutePath(newPath: string): Promise<void> {
-        this.routeFilePath = path.join(this.workspaceRoot, newPath);
-        await this.analyzeRoutes();
     }
 }

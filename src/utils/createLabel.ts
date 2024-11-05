@@ -37,6 +37,7 @@ export function showModuleTag(editor: vscode.TextEditor, moduleInfo: Record<stri
         vscode.StatusBarAlignment.Right,
         100
     );
+
     // 模块名称
     const moduleName = Array.isArray(moduleInfo.moduleNames) && moduleInfo.moduleNames.length > 1 ? moduleInfo.moduleNames.filter(Boolean).join(' / ') : moduleInfo.moduleNames.filter(Boolean)[0] ?? 'Not Found';
     const hideInMenu = moduleInfo?.hideInMenu ?? false;
@@ -51,7 +52,7 @@ export function showModuleTag(editor: vscode.TextEditor, moduleInfo: Record<stri
 
     tooltipContent.appendMarkdown(`### 模块信息\n\n`);
     tooltipContent.appendMarkdown(`- 模块名称: ${moduleName} [复制](command:extensionmodulemap.copyModuleName)\n`);
-    tooltipContent.appendMarkdown(`- IsHideInMenu: ${String(hideInMenu).toUpperCase()} [复制](command:extensionmodulemap.copyHideInMenu)\n`);
+    tooltipContent.appendMarkdown(`- IsHideInMenu: ${String(hideInMenu).charAt(0).toUpperCase() + String(hideInMenu).slice(1)} [复制](command:extensionmodulemap.copyHideInMenu)\n`);
     tooltipContent.appendMarkdown(`- 页面路由: ${moduleInfo.routePath} [复制](command:extensionmodulemap.copyRoutePath)\n`);
     tooltipContent.appendMarkdown(`- 文件路径: ${moduleInfo.filePath.split('src/')[1]} [复制](command:extensionmodulemap.copyFilePath)\n`);
     tooltipContent.appendMarkdown(`\n[复制全部信息](command:extensionmodulemap.copyAllInfo)`);
