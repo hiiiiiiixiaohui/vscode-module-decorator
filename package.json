@@ -1,8 +1,8 @@
 {
   "name": "extensionmodulemap",
-  "displayName": "Umi模块路由映射",
-  "description": "方便查看模块路由映射名称",
-  "version": "0.0.2",
+  "displayName": "UmiJS Router Module Analyzer",
+  "description": "convenient to view the module router mapping name",
+  "version": "0.0.3",
   "publisher": "hiiiiiiixiaohui",
   "icon": "images/icon.png",
   "repository": {
