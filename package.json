@@ -1,9 +1,10 @@
 {
   "name": "extensionmodulemap",
-  "displayName": "Umi路由模块映射",
+  "displayName": "Umi模块路由映射",
   "description": "方便查看模块路由映射名称",
   "version": "0.0.2",
   "publisher": "hiiiiiiixiaohui",
+  "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/hiiiiiiixiaohui/vscode-module-decorator.git"
@@ -22,7 +23,7 @@
     "commands": [
       {
         "command": "extensionmodulemap.restartModuleMap",
-        "title": "开启模块映射分析"
+        "title": "重新分析模块映射"
       },
       {
         "command": "extensionmodulemap.copyAllInfo",
@@ -68,7 +69,7 @@
     "wt": "tsc -p . -w --outDir out",
     "pt": "npm run ct && npm run c && npm run lt",
     "lt": "eslint src",
-    "ts": "vscode-test"
+    "ts": "vscode-test --verbose"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.9",
