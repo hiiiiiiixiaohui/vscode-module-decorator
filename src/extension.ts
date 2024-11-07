@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import { RouteAnalyzer } from './helper/routeAnalyzer';
 import { showModuleTag } from './utils/createLabel';
+import { alert } from './utils/alert';
 
 let disposables: vscode.Disposable[] = [];
 export function activate(context: vscode.ExtensionContext) {
@@ -43,7 +44,11 @@ export function activate(context: vscode.ExtensionContext) {
 	// 默认打开项目时初始化模块映射分析
 	start();
 	// 通过菜单重启模块映射分析
-	const disposable = vscode.commands.registerCommand('extensionmodulemap.restartModuleMap', () => {
+	const disposable = vscode.commands.registerCommand('extensionmodulemap.restartModuleMap', async () => {
+		if (!await routeAnalyzer.checkRouteFileExists()) {
+			alert();
+			return;
+		}
 		start();
 	});
 

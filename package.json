@@ -87,6 +87,7 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "@babel/core": "^7.26.0",
     "@babel/parser": "^7.26.2",
     "@babel/traverse": "^7.25.9"
   }

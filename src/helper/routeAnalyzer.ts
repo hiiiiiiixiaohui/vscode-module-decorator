@@ -56,7 +56,7 @@ export class RouteAnalyzer {
         this.routeFilePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.routeConfigPath') || `.${path.sep}config${path.sep}routes.ts`); // 默认路由文件路径
     }
 
-    private async checkRouteFileExists(): Promise<boolean> {
+    public async checkRouteFileExists(): Promise<boolean> {
         const routeExists = await fs.access(this.routeFilePath).then(() => true).catch(() => false);
         const targetModuleExists = await fs.access(this.targetModulePath).then(() => true).catch(() => false);
         return routeExists && targetModuleExists;
@@ -74,9 +74,6 @@ export class RouteAnalyzer {
             // 检查路由文件是否存在
             if (!await this.checkRouteFileExists()) {
                 this.initStatus = false;
-                vscode.window.showWarningMessage(`src${path.sep}pages目录下不存在!`);
-                vscode.window.showWarningMessage(`工作目录必须包含config${path.sep}routes.ts文件!`);
-                vscode.window.showWarningMessage('可通过配置修改extensionmodulemap.moduleSourceMapPath和extensionmodulemap.routeConfigPath设置路径!');
                 return;
             }
             this.moduleMappings.clear();
@@ -343,7 +340,9 @@ export class RouteAnalyzer {
                         hideInMenu: moduleInfo?.hideInMenu || false,
                         filePath
                     };
-
+                    // 通过ast解析pages目录组件依赖，待定方案
+                    // const importInfo = await this.parser.analyze(filePath);
+                    // console.log('importInfo', importInfo);
                     this.moduleMappings.set(filePath, mapping);
 
                 } else if (isInTurelyStuck && !isRoot) {
@@ -368,6 +367,9 @@ export class RouteAnalyzer {
                             routePath,
                             filePath
                         };
+                        // 如上
+                        // const importInfo = await this.parser.analyze(filePath);
+                        // console.log('importInfo 372', importInfo);
 
                         this.moduleMappings.set(filePath, mapping);
 
