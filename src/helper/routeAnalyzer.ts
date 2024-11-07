@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { Parser } from './parser';
 
 // 路由配置接口
 interface RouteConfig {
@@ -31,11 +32,18 @@ export class RouteAnalyzer {
     private iteratorArray: WeakMap<any, string[]>;
     private routes: RouteConfig[];
     private rootModuleFileTags: Map<string, string[]>;
+    private relevantExtensions: string[];
+    private parser: Parser;
+
     constructor(context: vscode.ExtensionContext) {
         this.moduleMappings = new Map();
         this.rootModuleFileTags = new Map();
         this.iteratorArray = new WeakMap();
         this.routes = [];
+        this.relevantExtensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.json', '.d.ts', '.less', '.scss', '.css'];
+
+
+        this.parser = new Parser(context);
 
         // 获取工作区根目录
         const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -76,22 +84,25 @@ export class RouteAnalyzer {
             await this.analyzeRoutes();
             this.initStatus = true;
             // 注册文件监听
-            this.watchRouteChanges();
+            this.watchFileChanges();
         } catch (error) {
             console.error('Failed to initialize route analyzer:', error);
             throw error;
         }
     }
 
+
     /**
      * 分析路由文件并建立映射
      */
     private async analyzeRoutes(): Promise<void> {
         try {
+            // 初始化json配置文件
+            await this.parser.initBeforeParseConfig();
             // 读取路由文件
             const content = await fs.readFile(this.routeFilePath, 'utf-8');
             // 解析路由配置，扁平化处理
-            const routes = await this.deepParseRouteConfig(content);
+            await this.deepParseRouteConfig(content);
             // 建立模块映射
             await this.buildModuleMappings();
         } catch (error) {
@@ -336,7 +347,7 @@ export class RouteAnalyzer {
                     this.moduleMappings.set(filePath, mapping);
 
                 } else if (isInTurelyStuck && !isRoot) {
-                    setTimeout(() => {
+                    const timer = setTimeout(async () => {
                         const parentDir = path.dirname(dir);
                         // 获取父级目录的模块名
                         let moduleNames = this.rootModuleFileTags.get(parentDir) || [];
@@ -345,7 +356,7 @@ export class RouteAnalyzer {
                             const moduleNameQuote = dir.split('pages')[1];
                             const dirName = `${path.sep}${moduleNameQuote.split(path.sep)[1]}`;
                             const parentDirPath = path.join(this.targetModulePath, dirName);
-                            moduleNames = this.rootModuleFileTags.get(parentDirPath) || [];
+                            moduleNames = await this.rootModuleFileTags.get(parentDirPath) || [];
                         }
                         // 特殊目录路由
                         if (filePath.includes(`${path.sep}user${path.sep}login`)) {
@@ -359,7 +370,9 @@ export class RouteAnalyzer {
                         };
 
                         this.moduleMappings.set(filePath, mapping);
-                    }, 0);
+
+                        clearTimeout(timer);
+                    }, 100);
                 }
             }
         } catch (error) {
@@ -381,19 +394,26 @@ export class RouteAnalyzer {
      * 判断是否为相关文件
      */
     private isRelevantFile(fileName: string): boolean {
-        const relevantExtensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.json', '.d.ts', '.less', '.scss', '.css'];
-        return relevantExtensions.some(ext => fileName.endsWith(ext));
+        return this.relevantExtensions.some(ext => fileName.endsWith(ext));
     }
 
     /**
-     * 监听路由文件变化
+     * 监听文件变化
      */
-    private watchRouteChanges(): void {
+    private watchFileChanges(): void {
+        // 监听路由文件变化
         const watcher = vscode.workspace.createFileSystemWatcher(
             new vscode.RelativePattern(this.workspaceRoot, `**${path.sep}routes${path.sep}**${path.sep}*`)
         );
+
+        // 监听模块文件变化
         const watcher2 = vscode.workspace.createFileSystemWatcher(
             new vscode.RelativePattern(this.workspaceRoot, `**${path.sep}src${path.sep}pages${path.sep}**${path.sep}*`)
+        );
+
+        // 监听json配置文件变化
+        const watcher3 = vscode.workspace.createFileSystemWatcher(
+            new vscode.RelativePattern(this.workspaceRoot, `**${path.sep}{jsconfig,tsconfig}.json`)
         );
 
         watcher.onDidChange(() => this.analyzeRoutes());
@@ -403,6 +423,10 @@ export class RouteAnalyzer {
         watcher2.onDidChange(() => this.analyzeRoutes());
         watcher2.onDidCreate(() => this.analyzeRoutes());
         watcher2.onDidDelete(() => this.analyzeRoutes());
+
+        watcher3.onDidChange(() => this.parser.initBeforeParseConfig());
+        watcher3.onDidCreate(() => this.parser.initBeforeParseConfig());
+        watcher3.onDidDelete(() => this.parser.initBeforeParseConfig());
     }
 
     /**
