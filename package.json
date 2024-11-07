@@ -89,6 +89,7 @@
   "dependencies": {
     "@babel/core": "^7.26.0",
     "@babel/parser": "^7.26.2",
+    "@babel/preset-typescript": "^7.26.0",
     "@babel/traverse": "^7.25.9"
   }
 }
