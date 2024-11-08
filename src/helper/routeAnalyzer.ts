@@ -19,9 +19,10 @@ interface RouteConfig {
 interface ModuleMapping {
     moduleNames: string | string[];
     routePath: string;
-    hideInMenu?: boolean;
+    hideInMenu: boolean;
     filePath: string;
-    isDep?: boolean;
+    title: string;
+    access: string;
 }
 
 export class RouteAnalyzer {
@@ -300,7 +301,7 @@ export class RouteAnalyzer {
                 const moduleDirName = this.extractModuleName(route.component);
                 const componentPath = this.resolveComponentPath(moduleDirName);
                 // 映射模块文件
-                await this.mapModuleFiles(componentPath, route.name!, route.path!, route.component, true);
+                await this.mapModuleFiles(componentPath, route.name!, route.path!, route.component, route.title!, route.access!, true);
             }
         }
     }
@@ -311,9 +312,11 @@ export class RouteAnalyzer {
      * @param moduleName 当前路由模块名称，例如name: 登录
      * @param routePath 当前路由的页面路由路径
      * @param componentPath 当前路由组件路径
+     * @param title  路由标题
+     * @param access 路由权限
      * @param isRoot 是否为pages下的根文件
      */
-    private async mapModuleFiles(dir: string, moduleName: string, routePath: string, componentPath: string, isRoot: boolean) {
+    private async mapModuleFiles(dir: string, moduleName: string, routePath: string, componentPath: string, title: string, access: string, isRoot: boolean) {
         try {
             // 首先检查目录是否存在
             const dirExists = await fs.access(dir).then(() => true).catch(() => false);
@@ -334,7 +337,7 @@ export class RouteAnalyzer {
                     // moduleName 会受routes的遍历初始值影响，
                     // 因此如果首个同名文件夹下的其余其他文件夹内的文件，都会受该值moduleName影响
                     // 后生代目录递归查找文件
-                    await this.mapModuleFiles(filePath, moduleName, routePath, componentPath, false);
+                    await this.mapModuleFiles(filePath, moduleName, routePath, componentPath, title, access, false);
                 } else if (isInTurelyStuck && isRoot) {
                     // 查找文件根目录index及相关文件，对比路由配置信息
                     const moduleInfo = this.parseFindModule(filePath);
@@ -345,7 +348,9 @@ export class RouteAnalyzer {
                         moduleNames: moduleInfo?.name ? [moduleInfo.name!] : moduleNames, // 兼容一些乱序的路由文件信息
                         routePath: moduleInfo?.path || routePath,
                         hideInMenu: moduleInfo?.hideInMenu || false,
-                        filePath
+                        filePath,
+                        title: moduleInfo?.title || title || '',
+                        access: moduleInfo?.access || access || '',
                     };
                     // 通过ast解析pages目录组件依赖，待定方案
                     // const importInfo = await this.parser.analyze(filePath);
@@ -382,6 +387,8 @@ export class RouteAnalyzer {
                             routePath: moduleInfo?.path || routePath,
                             hideInMenu: moduleInfo?.hideInMenu || false,
                             filePath,
+                            title: moduleInfo?.title || title || '',
+                            access: moduleInfo?.access || access || '',
                         };
                         // 如上
                         // const importInfo = await this.parser.analyze(filePath);

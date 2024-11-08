@@ -22,6 +22,8 @@ export function showModuleTag(moduleInfo: Record<string, any>) {
 
     tooltipContent.appendMarkdown(`### 模块信息\n\n`);
     tooltipContent.appendMarkdown(`- 模块名称: ${moduleName} [复制](command:extensionmodulemap.copyModuleName)\n`);
+    tooltipContent.appendMarkdown(`- Title: ${moduleInfo?.title} [复制](command:extensionmodulemap.copyRouteTitle)\n`);
+    tooltipContent.appendMarkdown(`- Access: ${moduleInfo?.access}\n`);
     tooltipContent.appendMarkdown(`- IsHideInMenu: ${String(hideInMenu).charAt(0).toUpperCase() + String(hideInMenu).slice(1)} [复制](command:extensionmodulemap.copyHideInMenu)\n`);
     tooltipContent.appendMarkdown(`- 页面路由: ${moduleInfo.routePath} [复制](command:extensionmodulemap.copyRoutePath)\n`);
     tooltipContent.appendMarkdown(`- 文件路径: ${moduleInfo.filePath.split('src/')[1]} [复制](command:extensionmodulemap.copyFilePath)\n`);
@@ -34,6 +36,11 @@ export function showModuleTag(moduleInfo: Record<string, any>) {
         vscode.commands.registerCommand('extensionmodulemap.copyModuleName', () => {
             vscode.env.clipboard.writeText(moduleName).then(() => {
                 vscode.window.showInformationMessage('模块名称已复制');
+            });
+        }),
+        vscode.commands.registerCommand('extensionmodulemap.copyRouteTitle', () => {
+            vscode.env.clipboard.writeText(moduleInfo.title).then(() => {
+                vscode.window.showInformationMessage('模块Title已复制');
             });
         }),
         vscode.commands.registerCommand('extensionmodulemap.copyHideInMenu', () => {

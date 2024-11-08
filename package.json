@@ -35,6 +35,10 @@
         "title": "复制模块名称"
       },
       {
+        "command": "extensionmodulemap.copyRouteTitle",
+        "title": "复制Title"
+      },
+      {
         "command": "extensionmodulemap.copyRoutePath",
         "title": "复制路由"
       },
