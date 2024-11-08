@@ -4,6 +4,10 @@ All notable changes to the "extensionmodulemap" extension will be documented in 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.2] - 2024-11-05
+
+- update deep file parse function
+
 ## [0.1.0] - 2024-11-05
 
 - modify version to 0.1.0
