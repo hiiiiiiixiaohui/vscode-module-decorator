@@ -11,8 +11,9 @@ export function showModuleTag(moduleInfo: Record<string, any>) {
     // 模块名称
     const moduleName = Array.isArray(moduleInfo.moduleNames) && moduleInfo.moduleNames.length > 1 ? moduleInfo.moduleNames.filter(Boolean).join(' / ') : moduleInfo.moduleNames.filter(Boolean)[0] ?? 'Not Found';
     const hideInMenu = moduleInfo?.hideInMenu ?? false;
+    const formattedModuleName = moduleName?.replace('·', '');
     // 设置状态栏显示的文本
-    statusBarItem.text = `$(tag) ${moduleName}`;
+    statusBarItem.text = `$(tag) ${formattedModuleName}`;
 
 
     // 创建悬停提示内容
@@ -21,7 +22,7 @@ export function showModuleTag(moduleInfo: Record<string, any>) {
     tooltipContent.supportHtml = true;
 
     tooltipContent.appendMarkdown(`### 模块信息\n\n`);
-    tooltipContent.appendMarkdown(`- 模块名称: ${moduleName} [复制](command:extensionmodulemap.copyModuleName)\n`);
+    tooltipContent.appendMarkdown(`- 模块名称: ${formattedModuleName} [复制](command:extensionmodulemap.copyModuleName)\n`);
     tooltipContent.appendMarkdown(`- Title: ${moduleInfo?.title} [复制](command:extensionmodulemap.copyRouteTitle)\n`);
     tooltipContent.appendMarkdown(`- Access: ${moduleInfo?.access}\n`);
     tooltipContent.appendMarkdown(`- HideInMenu: ${String(hideInMenu).charAt(0).toUpperCase() + String(hideInMenu).slice(1)} [复制](command:extensionmodulemap.copyHideInMenu)\n`);
@@ -34,7 +35,7 @@ export function showModuleTag(moduleInfo: Record<string, any>) {
     // 注册复制命令
     const disposables = [
         vscode.commands.registerCommand('extensionmodulemap.copyModuleName', () => {
-            vscode.env.clipboard.writeText(moduleName).then(() => {
+            vscode.env.clipboard.writeText(formattedModuleName).then(() => {
                 vscode.window.showInformationMessage('模块名称已复制');
             });
         }),
@@ -60,7 +61,7 @@ export function showModuleTag(moduleInfo: Record<string, any>) {
         }),
         vscode.commands.registerCommand('extensionmodulemap.copyAllInfo', () => {
             const moduleText = `
-                模块名称: ${moduleName}\n
+                模块名称: ${formattedModuleName}\n
                 Title: ${moduleInfo.title}\n
                 Access: ${moduleInfo.access}\n
                 HideInMenu: ${moduleInfo.hideInMenu}\n

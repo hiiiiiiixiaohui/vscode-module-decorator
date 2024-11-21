@@ -1,8 +1,8 @@
 # Change Log
 
-All notable changes to the "extensionmodulemap" extension will be documented in this file.
+## [0.1.4] - 2024-11-21
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+- fix file map when parent dir not have right route map
 
 ## [0.1.3] - 2024-11-05 pm
 
