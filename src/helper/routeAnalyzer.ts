@@ -342,7 +342,7 @@ export class RouteAnalyzer {
                     // 查找文件根目录index及相关文件，对比路由配置信息
                     const moduleInfo = this.parseFindModule(filePath);
                     // 存储路由跟目录下匹配的路由名称，提供给目录下的非路由文件作tags提示
-                    const moduleNames = [...new Set([...(this.rootModuleFileTags.get(dir) || []), moduleInfo?.name || moduleName || ''])].filter(Boolean) as string[];
+                    const moduleNames = [...new Set([...(this.rootModuleFileTags.get(dir) || []), moduleInfo?.name || `${moduleName}·` || ''])].filter(Boolean) as string[];
                     this.rootModuleFileTags.set(dir, moduleNames);
                     mapping = {
                         moduleNames: moduleInfo?.name ? [moduleInfo.name!] : moduleNames, // 兼容一些乱序的路由文件信息
@@ -357,46 +357,45 @@ export class RouteAnalyzer {
                     // console.log('importInfo', importInfo);
                     this.moduleMappings.set(filePath, mapping);
                 } else if (isInTurelyStuck && !isRoot) {
-                    const timer = setTimeout(async () => {
-                        // 获取深层子目录的上级目录 ./xx/xx.ts => ./xx, ./xxx/xxx/xxx.ts => ./xxx/xxx
-                        const parentDir = path.dirname(dir);
-                        // 从存储的当前文件父级目录中获取目录下的所存储的路由名称tags(有可能为空，上级扫描时，祖先目录不存在路由映射文件)
-                        // 相对于上级目录的再上级，一般为pages/xxxx,更深层次的则取上一级pages/xxxx/xxxx, todo: 存在不同目录同tags的情况，可优化
-                        let moduleNames = this.rootModuleFileTags.get(parentDir) || [];
-                        let moduleInfo: RouteConfig | undefined;
+                    // const timer = setTimeout(async () => {
+                    // 获取深层子目录的上级目录 ./xx/xx.ts => ./xx, ./xxx/xxx/xxx.ts => ./xxx/xxx
+                    const parentDir = path.dirname(dir);
+                    // 从存储的当前文件父级目录中获取目录下的所存储的路由名称tags(有可能为空，上级扫描时，祖先目录不存在路由映射文件)
+                    // 相对于上级目录的再上级，一般为pages/xxxx,更深层次的则取上一级pages/xxxx/xxxx, todo: 存在不同目录同tags的情况，可优化
+                    let moduleNames = this.rootModuleFileTags.get(parentDir) || [];
+                    let moduleInfo: RouteConfig | undefined;
+                    // 处理深层文件索引最外层目录菜单名称
+                    // 如果不存在，则重新下一步检查路由信息，重新回走前置检查
+                    const noHaveModuleNames = moduleNames?.length === 0;
+                    if (noHaveModuleNames || moduleNames.some((n) => n.includes("·"))) {
+                        // 过滤旧tag
+                        // tags为空时，则直接找pages下的祖先目录，获取tags（也有可能为空，祖先目录不存在文件时）
+                        // 重新查找深度复杂目录路由文件
+                        moduleInfo = this.parseFindModule(filePath);
+                        moduleNames = [...new Set([...(this.rootModuleFileTags.get(dir) || []), moduleInfo?.name || moduleName || ''])].filter(Boolean) as string[];
 
-                        // 处理深层文件索引最外层目录菜单名称
-                        // 如果不存在，则重新下一步检查路由信息，重新回走前置检查
-                        const noHaveModuleNames = moduleNames?.length === 0;
-                        if (noHaveModuleNames) {
-                            // 过滤旧tag
-                            // tags为空时，则直接找pages下的祖先目录，获取tags（也有可能为空，祖先目录不存在文件时）
-                            // 重新查找深度复杂目录路由文件
-                            moduleInfo = this.parseFindModule(filePath);
-                            moduleNames = [...new Set([...(this.rootModuleFileTags.get(dir) || []), moduleInfo?.name || moduleName || ''])].filter(Boolean) as string[];
+                        this.rootModuleFileTags.set(dir, moduleNames);
+                    }
+                    // 特殊目录路由
+                    if (filePath.includes(`${path.sep}user${path.sep}login`)) {
+                        moduleNames = ['login'];
+                    }
+                    // 非根目录下的文件
+                    mapping = {
+                        moduleNames: moduleInfo?.name ? [moduleInfo?.name] : moduleNames ?? [],
+                        routePath: moduleInfo?.path || routePath,
+                        hideInMenu: moduleInfo?.hideInMenu || false,
+                        filePath,
+                        title: moduleInfo?.title || title || '',
+                        access: moduleInfo?.access || access || '',
+                    };
+                    // 如上
+                    // const importInfo = await this.parser.analyze(filePath);
+                    // console.log('importInfo 372', importInfo);
+                    this.moduleMappings.set(filePath, mapping);
 
-                            this.rootModuleFileTags.set(dir, moduleNames);
-                        }
-                        // 特殊目录路由
-                        if (filePath.includes(`${path.sep}user${path.sep}login`)) {
-                            moduleNames = ['login'];
-                        }
-                        // 非根目录下的文件
-                        mapping = {
-                            moduleNames: moduleInfo?.name ? [moduleInfo?.name] : moduleNames ?? [],
-                            routePath: moduleInfo?.path || routePath,
-                            hideInMenu: moduleInfo?.hideInMenu || false,
-                            filePath,
-                            title: moduleInfo?.title || title || '',
-                            access: moduleInfo?.access || access || '',
-                        };
-                        // 如上
-                        // const importInfo = await this.parser.analyze(filePath);
-                        // console.log('importInfo 372', importInfo);
-                        this.moduleMappings.set(filePath, mapping);
-
-                        clearTimeout(timer);
-                    }, 100);
+                    //     clearTimeout(timer);
+                    // }, 10);
                 }
             }
         } catch (error) {
@@ -411,6 +410,7 @@ export class RouteAnalyzer {
      * @returns 查找到的路由模块，如果没有返回undefined
      */
     private parseFindModule(filePath: string,) {
+        // 文件后缀
         const suffix = path.extname(filePath);
         // 获取文件路径
         const componentSourcePath = filePath.split(suffix)[0];
