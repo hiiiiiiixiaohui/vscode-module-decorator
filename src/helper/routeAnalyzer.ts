@@ -493,9 +493,6 @@ export class RouteAnalyzer {
      * 获取文件对应的模块信息
      */
     public getModuleForFile(filePath: string): ModuleMapping | undefined {
-
-        console.log("filePath", filePath);
-        console.log("moduleMappings", this.moduleMappings.get(filePath));
         return this.moduleMappings.get(filePath);
     }
 }
