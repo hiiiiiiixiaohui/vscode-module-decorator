@@ -5,63 +5,89 @@ import * as parser from '@babel/parser';
 import { DEFAULT_EXTENSIONS } from '@babel/core';
 import traverse from "@babel/traverse";
 import * as vscode from 'vscode';
-import type { Dirent } from 'fs';
+
+import { Logger } from '../utils/logger';
+
+// 导入信息接口
+interface ImportInfo {
+    source: string;
+    specifiers: string[];
+    importType: 'default' | 'named' | 'namespace' | 'side-effect';
+    resolvedPath?: string;
+}
+
+// 文件依赖信息接口
+interface FileDependencyInfo {
+    filePath: string;
+    imports: ImportInfo[];
+    exports: string[];
+    dependencies: string[];
+}
 
 
 export class Parser {
     private workspaceRoot: string;
-    private targetModulePath: string;
-    private routeFilePath: string;
-    private importMap: Map<string, string[]>;
+    private dependencyCache: Map<string, FileDependencyInfo>;
     private aliasConfigs: Record<string, string[]>;
     private allowedExtensions: string[];
-    private pagesRegx: RegExp;
-    private dotsRegx: RegExp;
+    private logger: Logger;
 
-
-    constructor(context: vscode.ExtensionContext) {
-        this.importMap = new Map();
+    constructor(_context: vscode.ExtensionContext) {
+        this.dependencyCache = new Map();
         this.aliasConfigs = {};
         this.allowedExtensions = [...DEFAULT_EXTENSIONS, '.ts', '.tsx', '.js', '.jsx', '.vue'];
-        // hardcode get pages dir files
-        this.pagesRegx = /^\@\/pages\/(.*)/g;
-        // get relative path files
-        this.dotsRegx = /^\.\.?\/(.*)/g;
+        this.logger = Logger.getInstance();
 
         const workspaceFolders = vscode.workspace.workspaceFolders;
 
         if (!workspaceFolders) {
             throw new Error('No workspace folder found');
         }
-        // common path
-        this.workspaceRoot = workspaceFolders[0].uri.fsPath;
-        this.targetModulePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.moduleSourceMapPath') || `.${path.sep}src${path.sep}pages`);
-        this.routeFilePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.routeConfigPath') || `.${path.sep}config${path.sep}routes.ts`);
 
+        this.workspaceRoot = workspaceFolders[0].uri.fsPath;
     }
 
     /**
      * 获取js|tsconfig.json文件内容
      */
     public async initBeforeParseConfig(): Promise<void> {
-        const jsConfigPath = path.join(this.workspaceRoot, 'jsconfig.json');
-        const tsConfigPath = path.join(this.workspaceRoot, 'tsconfig.json');
-        const configPath = await fs.access(tsConfigPath).then(() => tsConfigPath).catch(() => jsConfigPath).catch(() => '');
-        if (!configPath) {
-            vscode.window.showErrorMessage('No config(jsconfig.json|tsconfig.json) file found!');
-        }
         try {
+            this.logger.debug('Initializing parser configuration...');
+
+            const jsConfigPath = path.join(this.workspaceRoot, 'jsconfig.json');
+            const tsConfigPath = path.join(this.workspaceRoot, 'tsconfig.json');
+
+            // 优先使用tsconfig.json
+            let configPath = '';
+            try {
+                await fs.access(tsConfigPath);
+                configPath = tsConfigPath;
+                this.logger.debug('Using tsconfig.json');
+            } catch {
+                try {
+                    await fs.access(jsConfigPath);
+                    configPath = jsConfigPath;
+                    this.logger.debug('Using jsconfig.json');
+                } catch {
+                    this.logger.warn('No TypeScript/JavaScript config file found, using default settings');
+                    return;
+                }
+            }
+
             const config = await fs.readFile(configPath, 'utf-8');
             const configObj = JSON.parse(config);
             const paths = configObj?.compilerOptions?.paths;
-            if (!paths) {
-                vscode.window.showErrorMessage('No paths found in config file!');
-            } else {
+
+            if (paths) {
                 this.parseAlias(paths);
+                this.logger.debug('Alias configuration loaded', { aliasCount: Object.keys(this.aliasConfigs).length });
+            } else {
+                this.logger.debug('No path aliases found in config file');
             }
 
-        } catch (e) {
-            vscode.window.showErrorMessage('Invalid config(jsconfig.json|tsconfig.json) file!');
+        } catch (error) {
+            this.logger.error('Failed to initialize parser configuration', error as Error);
+            // 不抛出错误，使用默认配置继续运行
         }
     }
 
@@ -83,123 +109,257 @@ export class Parser {
         });
     }
 
-    private async parseFullPath(dirPath: string, module: string) {
-        const dirs = await fs.readdir(dirPath, { withFileTypes: true });
-        for (const file of dirs) {
-            if (!file.isDirectory()) {
-                module = this.findFile(dirs, module);
-            }
-        }
-        return module;
-    }
 
-    private findFile(files: Dirent[], findPath: string, isRoot?: boolean): string {
-        let currentFilePath: string = '';
 
-        let file = files.find((file) => {
-            if (isRoot) {
-                findPath = findPath + 'index'; // import xxx from '@/pages/module', default export module index.xxx file
-                currentFilePath = path.join(findPath, file.name);
-            }
-            return currentFilePath.includes(findPath);
-        });
-        if (!file) {
-            file = files.find((file) => {
-                currentFilePath = path.join(path.dirname(findPath), file.name);
-                return currentFilePath.includes(findPath);
-            });
-        }
 
-        return path.join(file?.parentPath || path.dirname(findPath), file?.name!);
-    }
-    // 转换别名操作
-    private async transformAliasToAbs(importModulePath: string, originFilePath: string, alias?: string): Promise<string> {
-        let transformPath: string = '';
-        if (alias) {
-            const aliasRules = this.aliasConfigs[alias];
-            // 别用forEach await
-            for (const alasRule of aliasRules) {
-                // @/pages/xxx
-                // 完整别名的文件根路径 xxx/project/src/xxx
-                const fullFilePath = path.join(this.workspaceRoot, importModulePath.replace(alias, alasRule.replace('*', '')));
-
-                // 优先遍历识别当前url是否为目录(是则返回文件目录列表，否则报错通过catch查找上级目录)
-                await fs.readdir(fullFilePath, { withFileTypes: true }).then((files) => {
-                    transformPath = this.findFile(files, fullFilePath, true);
-                    // 查找当前符合条件的文件路径
-                }).catch(async () => {
-                    const parentDir = path.dirname(fullFilePath);
-                    const result = await this.parseFullPath(parentDir, fullFilePath);
-                    transformPath = result;
-                });
-
-            }
-        } else {
-            const fileFulePath = path.join(path.dirname(originFilePath), importModulePath);
-            transformPath = await this.parseFullPath(path.dirname(fileFulePath), fileFulePath);
-        }
-        return transformPath;
-    }
-
-    // 执行该方法前必须先解析完模块存在的paths别名
-    private async parse(filePath: string) {
-        // const dirPath = path.resolve(this.targetModulePath, `${filePath}`);
+    /**
+     * 解析文件的依赖关系
+     * @param filePath 文件路径
+     * @returns 文件依赖信息
+     */
+    private async parse(filePath: string): Promise<FileDependencyInfo | null> {
         try {
+            // 检查缓存
+            if (this.dependencyCache.has(filePath)) {
+                return this.dependencyCache.get(filePath)!;
+            }
+
             if (!this.allowedExtensions.includes(path.extname(filePath)) || filePath.includes('.d.ts')) {
-                return [];
+                return null;
             }
 
             const code = await fs.readFile(filePath, 'utf-8');
             const ast = parser.parse(code, {
                 sourceType: 'module',
-                plugins: ['jsx', 'typescript'],
+                plugins: ['jsx', 'typescript', 'decorators-legacy'],
+                allowImportExportEverywhere: true,
             });
 
-            // save this
-            const _this = this;
-            const alias = Object.keys(this.aliasConfigs);
+            const imports: ImportInfo[] = [];
+            const exports: string[] = [];
+            const dependencies: string[] = [];
 
             // @ts-ignore
             traverse(ast, {
-                ImportDeclaration(importPath: { node: { source: { value: string; }; }; }) {
-                    const importModulePath = importPath.node.source.value;
-
-                    // 存在别名则遍历
-                    if (alias?.length) {
-                        // 遍历alias
-                        alias.forEach(async (key) => {
-                            if (_this.pagesRegx.test(importModulePath)) {
-                                const obsPath = await _this.transformAliasToAbs(importModulePath, filePath, key);
-                                _this.importMap.set(filePath, [
-                                    ...(_this.importMap.get(filePath) || []),
-                                    obsPath,
-                                ]);
-                            }
-                        });
-                    }
-                    if (_this.dotsRegx.test(importModulePath)) {
-                        const timer = setTimeout(async () => {
-                            const obsPath = await _this.transformAliasToAbs(importModulePath, filePath);
-                            _this.importMap.set(filePath, [
-                                ...(_this.importMap.get(filePath) || []),
-                                obsPath,
-                            ]);
-                            clearTimeout(timer);
-                        }, 10);
+                ImportDeclaration: (path: any) => {
+                    const importInfo = this.extractImportInfo(path.node);
+                    if (importInfo) {
+                        imports.push(importInfo);
+                        dependencies.push(importInfo.source);
                     }
                 },
+                ExportNamedDeclaration: (path: any) => {
+                    if (path.node.declaration) {
+                        const exportNames = this.extractExportNames(path.node.declaration);
+                        exports.push(...exportNames);
+                    }
+                },
+                ExportDefaultDeclaration: (_path: any) => {
+                    exports.push('default');
+                }
             });
 
-            return [..._this.importMap.entries()];
-        } catch (e) {
-            console.log(e);
+            // 解析导入路径
+            for (const importInfo of imports) {
+                try {
+                    importInfo.resolvedPath = await this.resolveImportPath(importInfo.source, filePath);
+                } catch (error) {
+                    console.warn(`Failed to resolve import path: ${importInfo.source}`, error);
+                }
+            }
+
+            const dependencyInfo: FileDependencyInfo = {
+                filePath,
+                imports,
+                exports,
+                dependencies
+            };
+
+            // 缓存结果
+            this.dependencyCache.set(filePath, dependencyInfo);
+            return dependencyInfo;
+
+        } catch (error) {
+            console.error(`Failed to parse file ${filePath}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * 提取导入信息
+     * @param node AST导入声明节点
+     * @returns 导入信息
+     */
+    private extractImportInfo(node: any): ImportInfo | null {
+        if (!node.source || !node.source.value) {
+            return null;
+        }
+
+        const source = node.source.value;
+        const specifiers: string[] = [];
+        let importType: ImportInfo['importType'] = 'side-effect';
+
+        if (node.specifiers && node.specifiers.length > 0) {
+            for (const spec of node.specifiers) {
+                if (spec.type === 'ImportDefaultSpecifier') {
+                    specifiers.push('default');
+                    importType = 'default';
+                } else if (spec.type === 'ImportNamespaceSpecifier') {
+                    specifiers.push('*');
+                    importType = 'namespace';
+                } else if (spec.type === 'ImportSpecifier') {
+                    specifiers.push(spec.imported.name);
+                    importType = 'named';
+                }
+            }
+        }
+
+        return {
+            source,
+            specifiers,
+            importType
+        };
+    }
+
+    /**
+     * 提取导出名称
+     * @param declaration AST导出声明节点
+     * @returns 导出名称数组
+     */
+    private extractExportNames(declaration: any): string[] {
+        const names: string[] = [];
+
+        if (declaration.type === 'VariableDeclaration') {
+            for (const declarator of declaration.declarations) {
+                if (declarator.id.type === 'Identifier') {
+                    names.push(declarator.id.name);
+                }
+            }
+        } else if (declaration.type === 'FunctionDeclaration' || declaration.type === 'ClassDeclaration') {
+            if (declaration.id && declaration.id.name) {
+                names.push(declaration.id.name);
+            }
+        }
+
+        return names;
+    }
+
+    /**
+     * 解析导入路径为绝对路径
+     * @param importPath 导入路径
+     * @param fromFile 导入文件的路径
+     * @returns 解析后的绝对路径
+     */
+    private async resolveImportPath(importPath: string, fromFile: string): Promise<string> {
+        // 处理别名路径
+        const aliasKeys = Object.keys(this.aliasConfigs);
+        for (const alias of aliasKeys) {
+            if (importPath.startsWith(alias)) {
+                const aliasRules = this.aliasConfigs[alias];
+                for (const rule of aliasRules) {
+                    const resolvedPath = path.join(
+                        this.workspaceRoot,
+                        importPath.replace(alias, rule.replace('*', ''))
+                    );
+
+                    // 尝试找到实际文件
+                    const actualPath = await this.findActualFile(resolvedPath);
+                    if (actualPath) {
+                        return actualPath;
+                    }
+                }
+            }
+        }
+
+        // 处理相对路径
+        if (importPath.startsWith('.')) {
+            const resolvedPath = path.resolve(path.dirname(fromFile), importPath);
+            const actualPath = await this.findActualFile(resolvedPath);
+            if (actualPath) {
+                return actualPath;
+            }
+        }
+
+        // 处理node_modules或其他绝对路径
+        return importPath;
+    }
+
+    /**
+     * 查找实际文件路径（处理扩展名和index文件）
+     * @param basePath 基础路径
+     * @returns 实际文件路径
+     */
+    private async findActualFile(basePath: string): Promise<string | null> {
+        // 如果已经有扩展名，直接检查
+        if (path.extname(basePath)) {
+            try {
+                await fs.access(basePath);
+                return basePath;
+            } catch {
+                return null;
+            }
+        }
+
+        // 尝试添加扩展名
+        for (const ext of this.allowedExtensions) {
+            const filePath = basePath + ext;
+            try {
+                await fs.access(filePath);
+                return filePath;
+            } catch {
+                // 继续尝试下一个扩展名
+            }
+        }
+
+        // 尝试index文件
+        for (const ext of this.allowedExtensions) {
+            const indexPath = path.join(basePath, `index${ext}`);
+            try {
+                await fs.access(indexPath);
+                return indexPath;
+            } catch {
+                // 继续尝试下一个扩展名
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 分析文件依赖关系
+     * @param filePath 文件路径
+     * @returns 文件依赖信息
+     */
+    public async analyze(filePath: string): Promise<FileDependencyInfo | null> {
+        return await this.parse(filePath);
+    }
+
+    /**
+     * 获取文件的所有依赖文件路径
+     * @param filePath 文件路径
+     * @returns 依赖文件路径数组
+     */
+    public async getDependencies(filePath: string): Promise<string[]> {
+        const dependencyInfo = await this.analyze(filePath);
+        if (!dependencyInfo) {
             return [];
         }
 
+        const dependencies: string[] = [];
+        for (const importInfo of dependencyInfo.imports) {
+            if (importInfo.resolvedPath && importInfo.resolvedPath.startsWith(this.workspaceRoot)) {
+                dependencies.push(importInfo.resolvedPath);
+            }
+        }
+
+        return dependencies;
     }
 
-    public async analyze(filePath: string) {
-        return await this.parse(filePath);
+    /**
+     * 清除缓存
+     */
+    public clearCache(): void {
+        this.dependencyCache.clear();
     }
 
 }
