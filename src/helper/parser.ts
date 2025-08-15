@@ -259,7 +259,7 @@ export class Parser {
                 for (const rule of aliasRules) {
                     const resolvedPath = path.join(
                         this.workspaceRoot,
-                        importPath.replace(alias, rule.replace('*', ''))
+                        importPath.replace(alias, rule.replace(/\*/g, ''))
                     );
 
                     // 尝试找到实际文件
