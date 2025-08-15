@@ -3,7 +3,7 @@
   "displayName": "UmiJS Router Module Analyzer",
   "description": "convenient to view the module router mapping name",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.6",
   "publisher": "hiiiiiiixiaohui",
   "icon": "images/icon.png",
   "repository": {
@@ -63,6 +63,54 @@
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "UmiJS Router Module Analyzer",
+      "properties": {
+        "extensionmodulemap.moduleSourceMapPath": {
+          "type": "string",
+          "default": "./src/pages",
+          "description": "需要解析的模块路径"
+        },
+        "extensionmodulemap.routeConfigPath": {
+          "type": "string",
+          "default": "./config/routes.ts",
+          "description": "需要解析的路由文件"
+        },
+        "extensionmodulemap.logLevel": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "default": "info",
+          "description": "日志级别"
+        },
+        "extensionmodulemap.enableCache": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用缓存"
+        },
+        "extensionmodulemap.cacheMaxAge": {
+          "type": "number",
+          "default": 300000,
+          "description": "缓存最大存活时间（毫秒）"
+        },
+        "extensionmodulemap.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否自动刷新模块映射"
+        },
+        "extensionmodulemap.concurrencyLimit": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "并发处理限制"
+        }
+      }
     }
   },
   "scripts": {
