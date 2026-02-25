@@ -32,19 +32,12 @@ export class Parser {
     private allowedExtensions: string[];
     private logger: Logger;
 
-    constructor(_context: vscode.ExtensionContext) {
+    constructor(_context: vscode.ExtensionContext, workspaceRoot: string) {
         this.dependencyCache = new Map();
         this.aliasConfigs = {};
         this.allowedExtensions = [...DEFAULT_EXTENSIONS, '.ts', '.tsx', '.js', '.jsx', '.vue'];
         this.logger = Logger.getInstance();
-
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-
-        if (!workspaceFolders) {
-            throw new Error('No workspace folder found');
-        }
-
-        this.workspaceRoot = workspaceFolders[0].uri.fsPath;
+        this.workspaceRoot = workspaceRoot;
     }
 
     /**

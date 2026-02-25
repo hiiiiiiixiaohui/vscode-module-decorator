@@ -55,8 +55,14 @@ export class RouteAnalyzer {
     // 分析完成回调（文件监听触发重新分析时通知外部）
     private onAnalysisCompleteCallback: (() => void) | undefined;
 
-    constructor(context: vscode.ExtensionContext) {
+    /**
+     * @param workspaceRoot 该分析器对应的工作区文件夹根路径（绝对路径）
+     * @param folderUri     对应的 WorkspaceFolder URI，用于读取该文件夹级别的插件配置
+     *                      多根工作区下，不同文件夹可以分别配置 routeConfigPath 和 moduleSourceMapPath
+     */
+    constructor(context: vscode.ExtensionContext, workspaceRoot: string, folderUri?: vscode.Uri) {
         this.context = context;
+        this.workspaceRoot = workspaceRoot;
         this.moduleMappings = new Map();
         this.rootModuleFileTags = new Map();
         this.iteratorDirArray = new WeakMap();
@@ -65,10 +71,10 @@ export class RouteAnalyzer {
         this.fileReverseDependencies = new Map();
         this.relevantExtensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.json', '.d.ts', '.less', '.scss', '.css'];
         this.logger = Logger.getInstance();
-        this.parser = new Parser(context);
+        this.parser = new Parser(context, workspaceRoot);
 
-        // 初始化缓存管理器
-        const config = vscode.workspace.getConfiguration('extensionmodulemap');
+        // 读取该文件夹独立的插件配置（多根工作区下每个文件夹可单独配置路径）
+        const config = vscode.workspace.getConfiguration('extensionmodulemap', folderUri);
         const cacheMaxAge = config.get<number>('cacheMaxAge', 300000);
         const enableCache = config.get<boolean>('enableCache', true);
 
@@ -81,15 +87,14 @@ export class RouteAnalyzer {
             maxSize: 1000
         });
 
-        // 获取工作区根目录
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-
-        if (!workspaceFolders) {
-            throw new Error('No workspace folder found');
-        }
-        this.workspaceRoot = workspaceFolders[0].uri.fsPath;
-        this.targetModulePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.moduleSourceMapPath') || `.${path.sep}src${path.sep}pages`);
-        this.routeFilePath = path.join(this.workspaceRoot, vscode.workspace.getConfiguration().get('extensionmodulemap.routeConfigPath') || `.${path.sep}config${path.sep}routes.ts`);
+        this.targetModulePath = path.join(
+            workspaceRoot,
+            config.get<string>('moduleSourceMapPath', '') || `.${path.sep}src${path.sep}pages`
+        );
+        this.routeFilePath = path.join(
+            workspaceRoot,
+            config.get<string>('routeConfigPath', '') || `.${path.sep}config${path.sep}routes.ts`
+        );
     }
 
     public async checkRouteFileExists(): Promise<boolean> {
