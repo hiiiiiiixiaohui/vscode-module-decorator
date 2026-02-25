@@ -24,6 +24,11 @@ class ExtensionManager {
 		try {
 			this.logger.info('Extension initializing...');
 
+			// 注册文件分析完成后的回调（文件监听触发重新分析时自动刷新状态栏）
+			this.routeAnalyzer.setOnAnalysisCompleteCallback(() => {
+				this.handleActiveEditor(vscode.window.activeTextEditor);
+			});
+
 			// 初始化路由分析器
 			await this.routeAnalyzer.initialize();
 
@@ -108,7 +113,10 @@ class ExtensionManager {
 		}
 
 		const filePath = editor.document.uri.fsPath;
+
+		console.log('this.routeAnalyzer 119', filePath);
 		const moduleInfo = this.routeAnalyzer.getModuleForFile(filePath);
+		console.log('moduleInfo 119', moduleInfo);
 
 		if (moduleInfo) {
 			try {
