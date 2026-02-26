@@ -222,6 +222,7 @@ class ExtensionManager {
 		}
 
 		const fileUri = editor.document.uri;
+		this.logger.debug('handleActiveEditor fileUri', fileUri);
 
 		// 找到该文件所属的工作区文件夹
 		const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
@@ -229,12 +230,18 @@ class ExtensionManager {
 			return; // 文件不属于任何工作区文件夹（如临时文件、系统文件等）
 		}
 
+		this.logger.debug('handleActiveEditor workspaceFolder', workspaceFolder);
+
 		const analyzer = this.routeAnalyzers.get(workspaceFolder.uri.fsPath);
 		if (!analyzer || !analyzer.getInitStatus()) {
 			return; // 该文件夹没有对应的分析器（可能没有路由配置文件）
 		}
 
+		this.logger.debug('handleActiveEditor analyzer', analyzer);
+
 		const moduleInfo = analyzer.getModuleForFile(fileUri.fsPath);
+
+		this.logger.debug('handleActiveEditor moduleInfo', moduleInfo);
 
 		if (moduleInfo) {
 			try {

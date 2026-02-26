@@ -38,8 +38,7 @@ export class RouteAnalyzer {
     private routeFilePath: string;
     private initStatus: boolean = false;
     private moduleMappings: Map<string, ModuleMapping>;
-    private rootModuleFileTags: Map<string, string[]>;
-    private iteratorDirArray: WeakMap<any, string[]>;
+    private visitedDirs: Set<string>;
     private routes: RouteConfig[];
     private relevantExtensions: string[];
     private parser: Parser;
@@ -55,6 +54,12 @@ export class RouteAnalyzer {
     // 分析完成回调（文件监听触发重新分析时通知外部）
     private onAnalysisCompleteCallback: (() => void) | undefined;
 
+    // 防抖与并发防护：分支切换等批量文件变更会短时间内触发大量事件，
+    // 需将多次触发合并为一次分析，并防止多轮分析并发执行
+    private debounceTimer: any;
+    private isAnalyzing: boolean = false;
+    private pendingReanalysis: boolean = false;
+
     /**
      * @param workspaceRoot 该分析器对应的工作区文件夹根路径（绝对路径）
      * @param folderUri     对应的 WorkspaceFolder URI，用于读取该文件夹级别的插件配置
@@ -64,8 +69,7 @@ export class RouteAnalyzer {
         this.context = context;
         this.workspaceRoot = workspaceRoot;
         this.moduleMappings = new Map();
-        this.rootModuleFileTags = new Map();
-        this.iteratorDirArray = new WeakMap();
+        this.visitedDirs = new Set();
         this.routes = [];
         this.fileDependencies = new Map();
         this.fileReverseDependencies = new Map();
@@ -179,6 +183,10 @@ export class RouteAnalyzer {
             // 建立文件依赖关系图
             await this.buildDependencyGraph();
             this.logger.debug('Dependency graph built');
+
+            // 利用依赖图将路由模块名传播到所有关联文件
+            this.propagateModuleNamesViaDependencies();
+            this.logger.debug('Module names propagated via dependency graph');
 
         } catch (error) {
             this.logger.error('Failed to analyze routes', error as Error);
@@ -542,20 +550,47 @@ export class RouteAnalyzer {
             if (!exportMatch) { return []; }
             this.routes = this.parseAndFlattenRoutes(exportMatch[1]);
         } catch (error) {
-            console.error('Failed to parse route config:', error);
+            this.logger.error('Failed to parse route config', error as Error);
             return error;
         }
     }
 
+    /**
+     * 从路由 component 路径中提取模块根目录名
+     * 路由配置中 component 通常使用 / 分隔（如 Work/SubPage/index 或 ./Work/SubPage），
+     * 始终返回第一级有意义的目录，避免只扫描子目录而遗漏模块根目录下的公共文件。
+     *
+     * 示例：
+     *   Work/SubPage/index  → Work
+     *   ./Work/SubPage      → ./Work
+     *   @/Work/SubPage      → @/Work
+     */
     private extractModuleName(componentPath: string): string {
-        const pathParts = componentPath.split(path.sep);
-        return `${pathParts[0]}${path.sep}${pathParts[1]}`;
+        const normalized = componentPath.replace(/\\/g, '/');
+        const parts = normalized.split('/').filter(Boolean);
+
+        if (parts.length === 0) {
+            return componentPath;
+        }
+
+        if (parts[0] === '.') {
+            return parts.length >= 2 ? `./${parts[1]}` : '.';
+        }
+
+        if (parts[0].startsWith('@')) {
+            return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : parts[0];
+        }
+
+        return parts[0];
     }
 
     private async buildModuleMappings(): Promise<void> {
         const startTime = Date.now();
         let processedCount = 0;
         let errorCount = 0;
+
+        // 每次重新构建前清空访问记录，确保重新分析时数据干净
+        this.visitedDirs.clear();
 
         this.logger.debug('Building module mappings...', { routesCount: this.routes.length });
 
@@ -575,10 +610,8 @@ export class RouteAnalyzer {
                                 componentPath,
                                 route.name || 'Unknown',
                                 route.path || '',
-                                route.component,
                                 route.title || '',
                                 route.access || '',
-                                true
                             );
                         } else {
                             this.logger.warn('Component path does not exist', {
@@ -608,7 +641,8 @@ export class RouteAnalyzer {
 
     /**
      * 建立文件依赖关系图（正向依赖 + 反向依赖）
-     * 只统计模块内部文件之间的依赖，过滤掉 node_modules 等外部依赖
+     * parser.getDependencies 已在内部过滤掉 node_modules 和未解析的裸模块名，
+     * 此处再用 allFilesSet 二次过滤，确保依赖图中只保留本次分析范围内的源文件。
      */
     private async buildDependencyGraph(): Promise<void> {
         this.fileDependencies.clear();
@@ -621,7 +655,9 @@ export class RouteAnalyzer {
         for (const filePath of allFiles) {
             try {
                 const deps = await this.parser.getDependencies(filePath);
-                const localDeps = deps.filter(dep => allFilesSet.has(dep));
+                // 过滤到模块范围内的文件并去重：同一文件被多条 import 语句引用时，
+                // parser 可能返回重复路径，若不去重会在 fileReverseDependencies 中产生重复的 dependents 条目
+                const localDeps = [...new Set(deps.filter(dep => allFilesSet.has(dep)))];
                 this.fileDependencies.set(filePath, localDeps);
             } catch {
                 this.fileDependencies.set(filePath, []);
@@ -650,6 +686,116 @@ export class RouteAnalyzer {
         });
     }
 
+    /**
+     * 依赖图传播：以"直接路由匹配的文件"为种子，沿 import 方向（dependencies）单向传播。
+     * 为每个文件计算到各路由入口的最短 import 跳数，按跳数优先级同步更新全部路由字段。
+     *
+     * 【只沿 dependencies 方向传播，不走 dependents 方向】
+     * - 路由"拥有"它所 import 的文件（dependencies）：语义正确
+     * - 路由不"拥有"import 了它的文件（dependents）：那些是 Layout、父路由等，不属于该路由
+     *
+     * 赋值规则（以跳数最小的路由为"主路由"）：
+     *   moduleNames  → 0跳或唯一可达时写入单个名称；多路由可达时取前 MAX_ROUTE_NAMES 个
+     *   routePath    → 主路由的页面路由路径
+     *   title        → 主路由的菜单标题
+     *   access       → 主路由的权限标识
+     *   hideInMenu   → 主路由的菜单隐藏配置
+     *
+     * 无任何路由可达的文件：保留目录扫描阶段的初始值作为兜底
+     * 传播范围：仅限 moduleMappings 内的文件（buildDependencyGraph 已过滤外部依赖）
+     */
+    private propagateModuleNamesViaDependencies(): void {
+        const MAX_ROUTE_NAMES = 3;
+
+        // filePath → Map<routeName, { route: RouteConfig; hops: number }>
+        // 存储完整路由配置，便于最终同步所有字段
+        const candidateMap = new Map<string, Map<string, { route: RouteConfig; hops: number }>>();
+        for (const filePath of this.moduleMappings.keys()) {
+            candidateMap.set(filePath, new Map());
+        }
+
+        let seedCount = 0;
+
+        for (const [filePath] of this.moduleMappings) {
+            const route = this.findMatchingRoute(filePath);
+            if (!route?.name) {
+                continue;
+            }
+            seedCount++;
+
+            const routeName = route.name;
+
+            // BFS：只沿 dependencies 方向（import 树），记录每个文件的最短跳数
+            const distMap = new Map<string, number>();
+            const queue: Array<[string, number]> = [[filePath, 0]];
+
+            while (queue.length > 0) {
+                const [current, hops] = queue.shift()!;
+                if (distMap.has(current)) {
+                    continue;
+                }
+                distMap.set(current, hops);
+
+                const mapping = this.moduleMappings.get(current);
+                if (!mapping) {
+                    continue;
+                }
+
+                // 只跟随 dependencies（当前文件 import 了哪些文件），
+                // 不跟随 dependents（谁 import 了当前文件），避免污染上层文件的归属
+                for (const dep of mapping.dependencies) {
+                    if (!distMap.has(dep)) {
+                        queue.push([dep, hops + 1]);
+                    }
+                }
+            }
+
+            // 将本次 BFS 结果合并到 candidateMap（同一路由保留最短跳数）
+            for (const [fp, hops] of distMap) {
+                const fileMap = candidateMap.get(fp);
+                if (!fileMap) {
+                    continue;
+                }
+                const prev = fileMap.get(routeName);
+                if (prev === undefined || hops < prev.hops) {
+                    fileMap.set(routeName, { route, hops });
+                }
+            }
+        }
+
+        this.logger.debug('Propagation seeds collected', { seedCount });
+
+        for (const [filePath, mapping] of this.moduleMappings) {
+            const fileMap = candidateMap.get(filePath);
+            if (!fileMap || fileMap.size === 0) {
+                // 无任何路由可达：保留目录扫描阶段的初始值作为兜底
+                continue;
+            }
+
+            // 按跳数升序排列，跳数最小的为主路由
+            const sorted = Array.from(fileMap.values()).sort((a, b) => a.hops - b.hops);
+            const minHops = sorted[0].hops;
+
+            // 确定纳入 moduleNames 的路由列表
+            const topEntries = (minHops === 0 || sorted.length === 1)
+                ? [sorted[0]]
+                : sorted.slice(0, MAX_ROUTE_NAMES);
+
+            // 主路由（跳数最小）负责同步所有路由字段
+            const primary = sorted[0].route;
+
+            mapping.moduleNames = topEntries.map(e => e.route.name!).filter(Boolean);
+            mapping.routePath   = primary.path      ?? mapping.routePath;
+            mapping.title       = primary.title     ?? mapping.title;
+            mapping.access      = primary.access    ?? mapping.access;
+            mapping.hideInMenu  = primary.hideInMenu ?? mapping.hideInMenu;
+        }
+
+        this.logger.debug('Module names propagation completed', {
+            propagatedFiles: this.moduleMappings.size
+        });
+    }
+
     private chunkArray<T>(array: T[], chunkSize: number): T[][] {
         const chunks: T[][] = [];
         for (let i = 0; i < array.length; i += chunkSize) {
@@ -658,7 +804,7 @@ export class RouteAnalyzer {
         return chunks;
     }
 
-    private async mapModuleFiles(dir: string, moduleName: string, routePath: string, componentPath: string, title: string, access: string, isRoot: boolean) {
+    private async mapModuleFiles(dir: string, moduleName: string, routePath: string, title: string, access: string) {
         try {
             const dirExists = await fs.access(dir).then(() => true).catch(() => false);
             if (!dirExists) {
@@ -671,19 +817,29 @@ export class RouteAnalyzer {
                 const filePath = path.join(dir, file.name);
 
                 if (file.isDirectory()) {
-                    if (!this.iteratorDirArray.get(this)?.includes(filePath)) {
-                        this.iteratorDirArray.set(this, [...this.iteratorDirArray.get(this) || [], filePath]);
-                        await this.mapModuleFiles(filePath, moduleName, routePath, componentPath, title, access, false);
+                    // 每个目录只扫描一次：目录扫描阶段仅负责"发现文件并赋予初始模块名"，
+                    // 不再为不同路由重复遍历同一目录来堆积模块名。
+                    // 多路由共享文件的模块归属由 propagateModuleNamesViaDependencies 阶段
+                    // 依据真实 import 依赖关系来确定，避免同目录下 N 条路由积累出 N 个模块名。
+                    if (!this.visitedDirs.has(filePath)) {
+                        this.visitedDirs.add(filePath);
+                        await this.mapModuleFiles(filePath, moduleName, routePath, title, access);
                     }
-                } else if (this.isRelevantFile(file.name) && !this.moduleMappings.has(filePath)) {
-                    const mapping = await this.createFileMapping(filePath, moduleName, routePath, title, access, isRoot, dir);
-                    if (mapping) {
-                        this.moduleMappings.set(filePath, mapping);
+                } else if (this.isRelevantFile(file.name)) {
+                    if (!this.moduleMappings.has(filePath)) {
+                        // 首次遇到该文件：创建映射并写入初始模块名
+                        const mapping = await this.createFileMapping(filePath, moduleName, routePath, title, access);
+                        if (mapping) {
+                            this.moduleMappings.set(filePath, mapping);
+                        }
                     }
+                    // 已存在于映射中的文件：不再追加模块名。
+                    // 传播阶段（propagateModuleNamesViaDependencies）会根据实际 import 路径
+                    // 为共享文件重新分配准确的模块名，此处追加只会引入冗余。
                 }
             }
         } catch (error) {
-            console.error(`Failed to map files in directory ${dir}:`, error);
+            this.logger.error(`Failed to map files in directory ${dir}`, error as Error);
         }
     }
 
@@ -693,35 +849,27 @@ export class RouteAnalyzer {
         routePath: string,
         title: string,
         access: string,
-        isRoot: boolean,
-        dir: string
     ): Promise<ModuleMapping | null> {
         try {
             const moduleInfo = this.findMatchingRoute(filePath);
-
+            const finalRouteInfo: RouteConfig | undefined = moduleInfo;
             let moduleNames: string[];
-            let finalRouteInfo: RouteConfig | undefined = moduleInfo;
 
-            if (isRoot) {
-                moduleNames = moduleInfo?.name ? [moduleInfo.name] : [moduleName];
-                this.rootModuleFileTags.set(dir, moduleNames);
+            if (moduleInfo?.name) {
+                // 文件精确匹配某个路由，直接使用该路由的 name
+                moduleNames = [moduleInfo.name];
             } else {
-                const parentDir = path.dirname(dir);
-                moduleNames = this.rootModuleFileTags.get(parentDir) || [];
+                // 根目录或子目录下的非路由文件，统一使用当前扫描路径对应的路由名作为初始值。
+                // visitedDirs 已保证每个目录只被第一个到达的路由扫描一次，
+                // 因此 moduleName 在此处是唯一的、确定性的（不会因多条路由重复访问而堆积）。
+                // 传播阶段（propagateModuleNamesViaDependencies）会根据真实 import 关系重新赋值；
+                // 对于无法被 BFS 到达的文件（如未被任何文件 import 的 .d.ts 声明文件），
+                // 此处的单一名称作为兜底，避免出现十几个路由名堆积的情况。
+                moduleNames = [moduleName];
+            }
 
-                if (moduleNames.length === 0 || moduleNames.some(n => n.includes("·"))) {
-                    finalRouteInfo = this.findMatchingRoute(filePath);
-                    if (finalRouteInfo?.name) {
-                        moduleNames = [finalRouteInfo.name];
-                        this.rootModuleFileTags.set(dir, moduleNames);
-                    } else {
-                        moduleNames = [moduleName];
-                    }
-                }
-
-                if (filePath.includes(`${path.sep}user${path.sep}login`)) {
-                    moduleNames = ['login'];
-                }
+            if (filePath.includes(`${path.sep}user${path.sep}login`)) {
+                moduleNames = ['login'];
             }
 
             return {
@@ -731,55 +879,72 @@ export class RouteAnalyzer {
                 filePath,
                 title: finalRouteInfo?.title || title || '',
                 access: finalRouteInfo?.access || access || '',
-                dependencies: [],  // 由 buildDependencyGraph 填充
-                dependents: [],    // 由 buildDependencyGraph 填充
+                dependencies: [],
+                dependents: [],
             };
         } catch (error) {
-            console.error(`Failed to create file mapping for ${filePath}:`, error);
+            this.logger.error(`Failed to create file mapping for ${filePath}`, error as Error);
             return null;
         }
     }
 
     /**
+     * 将路由 component 字符串（使用 / 分隔，可含 @/、./ 前缀）转换为系统绝对路径（不含扩展名）
+     * 统一在此处理所有前缀，供 findMatchingRoute 和 resolveComponentPath 共同使用
+     */
+    private componentToAbsPath(component: string): string {
+        // 统一为 / 分隔，兼容 Windows 路由配置中偶尔出现的 \
+        let normalized = component.replace(/\\/g, '/');
+
+        if (normalized.startsWith('@/')) {
+            normalized = normalized.slice(2);
+        } else if (normalized.startsWith('./')) {
+            normalized = normalized.slice(2);
+        }
+
+        // path.join 会自动处理系统路径分隔符
+        return path.join(this.targetModulePath, normalized);
+    }
+
+    /**
      * 查找与文件路径精确匹配的路由信息
-     * 修复：统一使用 path.sep 处理路径分隔符，避免跨平台不一致
+     *
+     * 支持两种匹配模式：
+     *   A. 直接匹配：component = 'Work/SubPage/index' 或 'Work/SubPage/SomePage'
+     *      → 去掉文件扩展名后与 component 绝对路径相等
+     *   B. 目录 index 匹配：component = 'Work/SubPage'（指向目录）
+     *      → 实际文件为 Work/SubPage/index.tsx
      */
     private findMatchingRoute(filePath: string): RouteConfig | undefined {
-        const suffix = path.extname(filePath);
-        const componentSourcePath = filePath.split(suffix)[0];
+        const ext = path.extname(filePath);
+        // 用 slice 而非 split，避免路径中包含扩展名字符串导致误分割
+        const fileBasePath = filePath.slice(0, filePath.length - ext.length);
 
         return this.routes.find((route) => {
             if (!route.component) {
                 return false;
             }
 
-            // 统一将路由 component 路径中的 '/' 替换为系统分隔符
-            const normalizedComponent = route.component.replace(/\//g, path.sep);
-            const pathParts = normalizedComponent.split(path.sep);
+            const resolvedBase = this.componentToAbsPath(route.component);
 
-            // 处理简单路径（如 ./Work）：拼接 index 后匹配
-            if (pathParts.length <= 2) {
-                const fullPath = path.resolve(this.targetModulePath, normalizedComponent);
-                return `${fullPath}${path.sep}index` === componentSourcePath;
+            // 模式 A：去掉扩展名后直接相等
+            if (fileBasePath === resolvedBase) {
+                return true;
             }
 
-            // 处理 index 文件（如 ModuleName/SubPage/index.tsx）
-            if (/index\.(ts|tsx|jsx|js)$/.test(filePath)) {
-                const fullPath = path.resolve(
-                    this.targetModulePath,
-                    `${normalizedComponent}${path.sep}${path.basename(filePath).replace(suffix, '')}`
-                );
-                return fullPath === componentSourcePath;
+            // 模式 B：component 指向目录，实际文件是该目录下的 index 文件
+            if (path.basename(fileBasePath) === 'index') {
+                return fileBasePath === path.join(resolvedBase, 'index');
             }
 
-            // 直接路径匹配
-            const fullPath = path.resolve(this.targetModulePath, normalizedComponent);
-            return fullPath === componentSourcePath;
+            return false;
         });
     }
 
     private resolveComponentPath(componentPath: string): string {
-        if (componentPath.startsWith('@')) {
+        // componentPath 来自 extractModuleName，格式为 Work、./Work 或 @/Work
+        // 直接复用 componentToAbsPath 统一处理，path.join 会正确处理 ./ 前缀
+        if (componentPath.startsWith('@/')) {
             return path.join(this.targetModulePath, componentPath.slice(2));
         }
         return path.join(this.targetModulePath, componentPath);
@@ -789,28 +954,80 @@ export class RouteAnalyzer {
         return this.relevantExtensions.some(ext => fileName.endsWith(ext));
     }
 
-    private async handleFileChange(): Promise<void> {
+    /**
+     * 文件变更入口：仅负责防抖调度，不直接执行分析。
+     * 分支切换等场景会短时间内连续触发大量事件，防抖确保最后一次变更后
+     * 600ms 内无新事件才真正启动分析，将 N 次触发合并为一次。
+     */
+    private handleFileChange(): void {
+        if (this.debounceTimer) {
+            (globalThis as any).clearTimeout(this.debounceTimer);
+        }
+        this.debounceTimer = (globalThis as any).setTimeout(() => this.executeReanalysis(), 600);
+    }
+
+    /**
+     * 真正执行重新分析的方法，含两层保护：
+     *
+     * 1. 并发防护：若上一轮分析尚未结束，仅标记 pendingReanalysis，
+     *    上一轮结束后自动触发下一轮，不会有多个 analyzeRoutes 同时运行。
+     *
+     * 2. 快照回滚：分析前将当前有效数据保存为快照，切换到新容器执行分析；
+     *    分析成功则新数据生效，失败则恢复快照，保证任何情况下都有完整数据可用。
+     */
+    private async executeReanalysis(): Promise<void> {
+        this.debounceTimer = undefined;
+
+        if (this.isAnalyzing) {
+            // 有分析正在进行，打标记，当前轮结束后会自动再触发一次
+            this.pendingReanalysis = true;
+            return;
+        }
+
+        this.isAnalyzing = true;
+        this.pendingReanalysis = false;
+        this.logger.info('Re-analyzing routes (triggered by file change)...');
+
+        this.routeCache.clear();
+        this.mappingCache.clear();
+        this.parser.clearCache();
+
+        // 保存当前有效数据的快照引用（不做深拷贝，只保留对象引用）
+        const snapshot = {
+            routes: this.routes,
+            moduleMappings: this.moduleMappings,
+            fileDependencies: this.fileDependencies,
+            fileReverseDependencies: this.fileReverseDependencies,
+        };
+
+        // 切换到全新容器：analyzeRoutes 及其子流程均写入新容器，
+        // 旧容器数据在快照中保留，分析期间外部读取仍可访问旧数据
+        this.routes = [];
+        this.moduleMappings = new Map();
+        this.fileDependencies = new Map();
+        this.fileReverseDependencies = new Map();
+
         try {
-            this.logger.info('File change detected, clearing caches and re-analyzing...');
-
-            this.routeCache.clear();
-            this.mappingCache.clear();
-            this.parser.clearCache();
-
-            // 清空旧数据
-            this.moduleMappings.clear();
-            this.routes = [];
-            this.fileDependencies.clear();
-            this.fileReverseDependencies.clear();
-
             await this.analyzeRoutes();
-
-            this.logger.info('File change handled successfully');
-
-            // 通知外部（ExtensionManager）刷新状态栏
+            this.logger.info('Re-analysis completed successfully', {
+                routesCount: this.routes.length,
+                mappingsCount: this.moduleMappings.size
+            });
             this.onAnalysisCompleteCallback?.();
         } catch (error) {
-            this.logger.error('Failed to handle file change', error as Error);
+            // 分析失败（如分支切换导致文件临时不存在）：恢复快照，保留上一次有效数据
+            this.logger.warn('Re-analysis failed, restoring previous valid state', error as Error);
+            this.routes = snapshot.routes;
+            this.moduleMappings = snapshot.moduleMappings;
+            this.fileDependencies = snapshot.fileDependencies;
+            this.fileReverseDependencies = snapshot.fileReverseDependencies;
+        } finally {
+            this.isAnalyzing = false;
+            if (this.pendingReanalysis) {
+                // 分析期间又有新的文件变更，重新调度一次
+                this.pendingReanalysis = false;
+                this.handleFileChange();
+            }
         }
     }
 
@@ -818,16 +1035,17 @@ export class RouteAnalyzer {
         this.disposeFileWatchers();
 
         try {
+            // VS Code glob pattern 固定使用 /，不能用 path.sep（Windows 上 path.sep 为 \）
             const routeWatcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(this.workspaceRoot, `**${path.sep}routes${path.sep}**${path.sep}*`)
+                new vscode.RelativePattern(this.workspaceRoot, '**/routes/**/*')
             );
 
             const moduleWatcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(this.workspaceRoot, `**${path.sep}src${path.sep}pages${path.sep}**${path.sep}*`)
+                new vscode.RelativePattern(this.workspaceRoot, '**/src/pages/**/*')
             );
 
             const configWatcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(this.workspaceRoot, `**${path.sep}{jsconfig,tsconfig}.json`)
+                new vscode.RelativePattern(this.workspaceRoot, '**/{jsconfig,tsconfig}.json')
             );
 
             this.registerWatcherEvents(routeWatcher, 'route');
@@ -901,12 +1119,16 @@ export class RouteAnalyzer {
         this.logger.info('RouteAnalyzer disposing...');
 
         try {
+            if (this.debounceTimer) {
+                (globalThis as any).clearTimeout(this.debounceTimer);
+                this.debounceTimer = undefined;
+            }
             this.disposeFileWatchers();
             this.routeCache.clear();
             this.mappingCache.clear();
             this.parser.clearCache();
             this.moduleMappings.clear();
-            this.rootModuleFileTags.clear();
+            this.visitedDirs.clear();
             this.fileDependencies.clear();
             this.fileReverseDependencies.clear();
             this.initStatus = false;

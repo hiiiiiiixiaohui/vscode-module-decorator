@@ -13,7 +13,7 @@
 		{
 			"type": "npm",
 			"script": "w",
-			"problemMatcher": "$ts-webpack-watch",
+			"problemMatcher": [],
 			"isBackground": true,
 			"presentation": {
 				"reveal": "never",
